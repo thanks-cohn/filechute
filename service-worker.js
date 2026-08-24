@@ -48,17 +48,21 @@ async function standaloneBounds(tab) {
   };
 }
 
+async function focusStandalone(windowInfo, bounds = null) {
+  if (!windowInfo?.id) return false;
+  try {
+    await chrome.windows.update(windowInfo.id, { focused: true, ...(bounds || {}) });
+    return true;
+  } catch {
+    await forgetStandaloneWindow();
+    return false;
+  }
+}
+
 async function openStandaloneFileChute(tab) {
   const bounds = await standaloneBounds(tab);
   const existing = await rememberedStandaloneWindow();
-  if (existing?.id) {
-    try {
-      await chrome.windows.update(existing.id, { focused: true, ...bounds });
-      return;
-    } catch {
-      await forgetStandaloneWindow();
-    }
-  }
+  if (await focusStandalone(existing, bounds)) return;
 
   const created = await chrome.windows.create({
     url: chrome.runtime.getURL("sidepanel.html?standalone=1"),
@@ -70,7 +74,31 @@ async function openStandaloneFileChute(tab) {
   await rememberStandaloneWindow(created?.id);
 }
 
+async function injectPageDropBridge(tab) {
+  if (!tab?.id) return false;
+  await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    files: ["page-drop-bridge.js"]
+  });
+  return true;
+}
+
 async function toggleFileChute(tab) {
+  const standalone = await rememberedStandaloneWindow();
+
+  // When the separate FileChute window is already open, clicking FileChute on
+  // an ordinary webpage arms that page as a real upload target and returns
+  // focus to the existing left-side FileChute window.
+  if (standalone?.id && tab?.id) {
+    try {
+      await injectPageDropBridge(tab);
+      await focusStandalone(standalone);
+      return;
+    } catch (error) {
+      console.info("This page cannot host the FileChute website drop bridge.", error);
+    }
+  }
+
   if (!tab?.id) {
     await openStandaloneFileChute(tab);
     return;
