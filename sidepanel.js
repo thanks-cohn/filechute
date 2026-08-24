@@ -17,24 +17,33 @@ import {
 const ROOT_HANDLE_KEY = "filechute-root-handle";
 const THUMBNAILS_KEY = "filechute-show-thumbnails";
 const VIDEO_THUMBNAILS_KEY = "filechute-video-thumbnails";
+const THUMBNAIL_SIZE_KEY = "filechute-thumbnail-size";
+const THUMBNAIL_DRAG_KEY = "filechute-thumbnail-drag-mode";
 const METADATA_CHOICE_KEY = "filechute-metadata-storage-choice";
 const THUMBNAIL_CHOICE_KEY = "filechute-thumbnail-storage-choice";
 const CHUTE_DRAG_TYPE = "application/x-chute-item";
 const CHUTE_DRAG_PREFIX = "CHUTE_ITEM:";
 const CHUTE_ORIGIN = "http://127.0.0.1:17891/*";
-const THUMB_SIZE = 48;
+const DEFAULT_THUMBNAIL_SIZE = 48;
+const MIN_THUMBNAIL_SIZE = 24;
+const MAX_THUMBNAIL_SIZE = 160;
 
 const chooseRootButton = document.querySelector("#choose-root");
+const settingsButton = document.querySelector("#open-settings");
 const backButton = document.querySelector("#back");
 const homeButton = document.querySelector("#home");
 const breadcrumbs = document.querySelector("#breadcrumbs");
 const showThumbnailsInput = document.querySelector("#show-thumbnails");
 const videoThumbnailsInput = document.querySelector("#video-thumbnails");
+const thumbnailSizeInput = document.querySelector("#thumbnail-size");
+const thumbnailSizeValue = document.querySelector("#thumbnail-size-value");
+const thumbnailDragModeInput = document.querySelector("#thumbnail-drag-mode");
 const metadataLocationButton = document.querySelector("#metadata-location");
 const thumbnailLocationButton = document.querySelector("#thumbnail-location");
 const statusElement = document.querySelector("#status");
 const entriesElement = document.querySelector("#entries");
 const entryTemplate = document.querySelector("#entry-template");
+const settingsDialog = document.querySelector("#settings-dialog");
 const metadataDialog = document.querySelector("#metadata-dialog");
 const metadataBrowserOnly = document.querySelector("#metadata-browser-only");
 const metadataChoose = document.querySelector("#metadata-choose");
@@ -47,12 +56,26 @@ let pathHandles = [];
 let pathNames = [];
 let showThumbnails = true;
 let videoThumbnails = true;
+let thumbnailSize = DEFAULT_THUMBNAIL_SIZE;
+let thumbnailDragMode = "original";
 let renderGeneration = 0;
 const previewUrls = new Set();
 
 function setStatus(message, error = false) {
   statusElement.textContent = message;
   statusElement.classList.toggle("error", error);
+}
+
+function clampThumbnailSize(value) {
+  const number = Number.parseInt(value, 10);
+  if (!Number.isFinite(number)) return DEFAULT_THUMBNAIL_SIZE;
+  return Math.min(MAX_THUMBNAIL_SIZE, Math.max(MIN_THUMBNAIL_SIZE, number));
+}
+
+function applyThumbnailSize() {
+  document.documentElement.style.setProperty("--thumbnail-size", `${thumbnailSize}px`);
+  if (thumbnailSizeInput) thumbnailSizeInput.value = String(thumbnailSize);
+  if (thumbnailSizeValue) thumbnailSizeValue.textContent = `${thumbnailSize}px`;
 }
 
 function currentDirectory() {
@@ -98,16 +121,18 @@ function revokePreviewUrls() {
 }
 
 function extensionOf(name) {
-  return String(name || "").toLowerCase().split(".").pop() || "";
+  const value = String(name || "").toLowerCase();
+  const index = value.lastIndexOf(".");
+  return index < 0 ? "" : value.slice(index + 1);
 }
 
 function fallbackIcon(handle, file = null) {
   if (handle.kind === "directory") return "📁";
   const mime = String(file?.type || "").toLowerCase();
   const ext = extensionOf(handle.name);
-  if (mime.startsWith("image/")) return "🖼️";
-  if (mime.startsWith("video/")) return "🎞️";
-  if (mime.startsWith("audio/")) return "🎵";
+  if (mime.startsWith("image/") || ["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "ico", "apng"].includes(ext)) return "🖼️";
+  if (mime.startsWith("video/") || ["mp4", "m4v", "webm", "ogv", "mov", "mkv"].includes(ext)) return "🎞️";
+  if (mime.startsWith("audio/") || ["mp3", "wav", "ogg", "oga", "opus", "flac", "aac", "m4a", "weba"].includes(ext)) return "🎵";
   if (mime === "application/pdf" || ext === "pdf") return "📕";
   if (mime.startsWith("text/") || ["txt", "md", "json", "csv", "log"].includes(ext)) return "📝";
   if (["zip", "7z", "rar", "tar", "gz"].includes(ext)) return "📦";
@@ -119,18 +144,19 @@ function canvasBlob(canvas) {
     canvas.toBlob(
       (blob) => blob ? resolve(blob) : reject(new Error("Could not encode thumbnail")),
       "image/webp",
-      0.72
+      0.76
     );
   });
 }
 
 function drawCover(context, source, sourceWidth, sourceHeight) {
-  const scale = Math.max(THUMB_SIZE / sourceWidth, THUMB_SIZE / sourceHeight);
+  const size = thumbnailSize;
+  const scale = Math.max(size / sourceWidth, size / sourceHeight);
   const width = sourceWidth * scale;
   const height = sourceHeight * scale;
-  const x = (THUMB_SIZE - width) / 2;
-  const y = (THUMB_SIZE - height) / 2;
-  context.clearRect(0, 0, THUMB_SIZE, THUMB_SIZE);
+  const x = (size - width) / 2;
+  const y = (size - height) / 2;
+  context.clearRect(0, 0, size, size);
   context.drawImage(source, x, y, width, height);
 }
 
@@ -138,8 +164,8 @@ async function imageThumbnail(file) {
   const bitmap = await createImageBitmap(file);
   try {
     const canvas = document.createElement("canvas");
-    canvas.width = THUMB_SIZE;
-    canvas.height = THUMB_SIZE;
+    canvas.width = thumbnailSize;
+    canvas.height = thumbnailSize;
     const context = canvas.getContext("2d", { alpha: true });
     drawCover(context, bitmap, bitmap.width, bitmap.height);
     return await canvasBlob(canvas);
@@ -159,28 +185,19 @@ async function videoThumbnail(file) {
   try {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("Video thumbnail timed out")), 6000);
-      const done = () => {
-        clearTimeout(timer);
-        resolve();
-      };
-      const fail = () => {
-        clearTimeout(timer);
-        reject(new Error("Chromium could not decode this video preview"));
-      };
+      const done = () => { clearTimeout(timer); resolve(); };
+      const fail = () => { clearTimeout(timer); reject(new Error("Chromium could not decode this video preview")); };
       video.addEventListener("loadeddata", done, { once: true });
       video.addEventListener("error", fail, { once: true });
       video.load();
     });
 
-    const width = video.videoWidth;
-    const height = video.videoHeight;
-    if (!width || !height) throw new Error("Video has no decodable frame");
-
+    if (!video.videoWidth || !video.videoHeight) throw new Error("Video has no decodable frame");
     const canvas = document.createElement("canvas");
-    canvas.width = THUMB_SIZE;
-    canvas.height = THUMB_SIZE;
+    canvas.width = thumbnailSize;
+    canvas.height = thumbnailSize;
     const context = canvas.getContext("2d", { alpha: false });
-    drawCover(context, video, width, height);
+    drawCover(context, video, video.videoWidth, video.videoHeight);
     return await canvasBlob(canvas);
   } finally {
     video.removeAttribute("src");
@@ -194,18 +211,20 @@ async function thumbnailFor(file, relativePath) {
     relativePath,
     size: file.size,
     lastModified: file.lastModified,
-    mime: file.type
+    mime: file.type,
+    thumbnailSize
   });
 
   const stored = await loadThumbnail(key);
   if (stored) return stored;
 
   let generated = null;
-  if (file.type.startsWith("image/")) {
-    generated = await imageThumbnail(file);
-  } else if (videoThumbnails && file.type.startsWith("video/")) {
-    generated = await videoThumbnail(file);
-  }
+  const ext = extensionOf(file.name);
+  const imageLike = file.type.startsWith("image/") || ["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "ico", "apng"].includes(ext);
+  const videoLike = file.type.startsWith("video/") || ["mp4", "m4v", "webm", "ogv", "mov", "mkv"].includes(ext);
+
+  if (imageLike) generated = await imageThumbnail(file);
+  else if (videoThumbnails && videoLike) generated = await videoThumbnail(file);
 
   if (generated) await saveThumbnail(key, generated);
   return generated;
@@ -216,6 +235,7 @@ function showPreview(img, fallback, blob) {
   previewUrls.add(url);
   img.src = url;
   img.hidden = false;
+  img.draggable = false;
   fallback.hidden = true;
 }
 
@@ -257,25 +277,78 @@ function breadcrumbsText() {
   return rootHandle ? [rootHandle.name, ...pathNames].join(" / ") : "No folder selected";
 }
 
+function thumbnailFileName(name) {
+  const dot = name.lastIndexOf(".");
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  return `${stem || "file"}.thumbnail-${thumbnailSize}px.webp`;
+}
+
+const MIME_BY_EXTENSION = {
+  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp",
+  avif: "image/avif", bmp: "image/bmp", svg: "image/svg+xml", ico: "image/x-icon", apng: "image/apng",
+  pdf: "application/pdf", mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", oga: "audio/ogg",
+  opus: "audio/opus", flac: "audio/flac", aac: "audio/aac", m4a: "audio/mp4", weba: "audio/webm",
+  mp4: "video/mp4", m4v: "video/mp4", webm: "video/webm", ogv: "video/ogg", mov: "video/quicktime",
+  txt: "text/plain", md: "text/markdown", json: "application/json", csv: "text/csv"
+};
+
+function normalizedTransferFile(file, name) {
+  if (!(file instanceof File)) return file;
+  const inferred = MIME_BY_EXTENSION[extensionOf(name)] || "";
+  if (!inferred || file.type === inferred) return file;
+  if (file.type && file.type !== "application/octet-stream") return file;
+  return new File([file], name || file.name, { type: inferred, lastModified: file.lastModified });
+}
+
+function buildPayload({ handle, name, file, metadata, relativePath, representation = "original" }) {
+  return makeFileChutePayload({
+    kind: handle.kind === "directory" ? "directory" : "file",
+    name: representation === "thumbnail" ? thumbnailFileName(name) : name,
+    originalName: name,
+    representation,
+    mime: representation === "thumbnail" ? "image/webp" : (file?.type || ""),
+    relativePath,
+    sourceUrl: metadata?.sourceUrl || null,
+    parentPageUrl: metadata?.parentPageUrl || null,
+    size: file?.size ?? null,
+    lastModified: file?.lastModified ?? null
+  });
+}
+
+function startDrag({ event, row, preview, payload, file }) {
+  const transfer = event.dataTransfer;
+  if (!transfer) return;
+  row.classList.add("dragging");
+  writeFileChuteDrag(transfer, payload, file);
+  if (!preview.hidden) {
+    try { transfer.setDragImage(preview, thumbnailSize / 2, thumbnailSize / 2); } catch {}
+  }
+}
+
 async function renderEntry(name, handle, generation) {
   if (generation !== renderGeneration) return;
   const row = entryTemplate.content.firstElementChild.cloneNode(true);
+  const previewWrap = row.querySelector(".preview-wrap");
   const preview = row.querySelector(".preview");
   const fallback = row.querySelector(".fallback-icon");
   const nameElement = row.querySelector(".entry-name");
   const pathButton = row.querySelector(".entry-path");
   const relativePath = childLocation(name);
 
+  row.draggable = false;
+  preview.draggable = false;
   nameElement.textContent = name;
   pathButton.textContent = relativePath;
   pathButton.title = `Copy ${relativePath}`;
 
   let file = null;
   let metadata = null;
+  let thumbnailBlob = null;
+
   if (handle.kind === "directory") {
     row.classList.add("directory");
     fallback.textContent = "📁";
-    nameElement.title = "Open folder";
+    nameElement.title = "Open folder · drag to move the directory into a FileChute-aware target";
     nameElement.addEventListener("click", () => navigateInto(name, handle));
   } else {
     try {
@@ -296,29 +369,36 @@ async function renderEntry(name, handle, generation) {
     }
   });
 
-  row.addEventListener("dragstart", (event) => {
-    const transfer = event.dataTransfer;
-    if (!transfer) return;
-    row.classList.add("dragging");
+  const dragOriginal = (event) => {
+    const transferFile = normalizedTransferFile(file, name);
+    const payload = buildPayload({ handle, name, file: transferFile, metadata, relativePath, representation: "original" });
+    startDrag({ event, row, preview, payload, file: transferFile });
+  };
 
-    const payload = makeFileChutePayload({
-      kind: handle.kind === "directory" ? "directory" : "file",
-      name,
-      mime: file?.type || "",
-      relativePath,
-      sourceUrl: metadata?.sourceUrl || null,
-      parentPageUrl: metadata?.parentPageUrl || null,
-      size: file?.size ?? null,
-      lastModified: file?.lastModified ?? null
-    });
+  nameElement.draggable = true;
+  nameElement.title = handle.kind === "directory"
+    ? "Click to open · drag to send this directory"
+    : "Drag the name to send the full original file";
+  nameElement.addEventListener("dragstart", dragOriginal);
 
-    writeFileChuteDrag(transfer, payload, file);
-    if (!preview.hidden) {
-      try { transfer.setDragImage(preview, THUMB_SIZE / 2, THUMB_SIZE / 2); } catch {}
+  previewWrap.draggable = true;
+  previewWrap.title = "Drag preview";
+  previewWrap.addEventListener("dragstart", (event) => {
+    if (thumbnailDragMode === "thumbnail" && thumbnailBlob && handle.kind === "file") {
+      const thumbFile = new File([thumbnailBlob], thumbnailFileName(name), {
+        type: "image/webp",
+        lastModified: Date.now()
+      });
+      const payload = buildPayload({ handle, name, file, metadata, relativePath, representation: "thumbnail" });
+      startDrag({ event, row, preview, payload, file: thumbFile });
+      return;
     }
+    dragOriginal(event);
   });
 
-  row.addEventListener("dragend", () => row.classList.remove("dragging"));
+  const finishDrag = () => row.classList.remove("dragging");
+  nameElement.addEventListener("dragend", finishDrag);
+  previewWrap.addEventListener("dragend", finishDrag);
 
   if (handle.kind === "directory") {
     row.addEventListener("dragover", (event) => {
@@ -339,12 +419,15 @@ async function renderEntry(name, handle, generation) {
   entriesElement.append(row);
 
   if (!file || !showThumbnails) return;
-  if (!file.type.startsWith("image/") && !(videoThumbnails && file.type.startsWith("video/"))) return;
+  const ext = extensionOf(file.name);
+  const imageLike = file.type.startsWith("image/") || ["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "ico", "apng"].includes(ext);
+  const videoLike = file.type.startsWith("video/") || ["mp4", "m4v", "webm", "ogv", "mov", "mkv"].includes(ext);
+  if (!imageLike && !(videoThumbnails && videoLike)) return;
 
   try {
-    const blob = await thumbnailFor(file, relativePath);
-    if (generation !== renderGeneration || !blob) return;
-    showPreview(preview, fallback, blob);
+    thumbnailBlob = await thumbnailFor(file, relativePath);
+    if (generation !== renderGeneration || !thumbnailBlob) return;
+    showPreview(preview, fallback, thumbnailBlob);
   } catch (error) {
     console.warn("Thumbnail unavailable for", relativePath, error);
   }
@@ -587,6 +670,7 @@ thumbnailLocationButton.addEventListener("click", async () => {
   }
 });
 
+settingsButton.addEventListener("click", () => settingsDialog.showModal());
 chooseRootButton.addEventListener("click", chooseRoot);
 backButton.addEventListener("click", async () => {
   if (!pathHandles.length) return;
@@ -612,6 +696,26 @@ videoThumbnailsInput.addEventListener("change", async () => {
   await renderDirectory();
 });
 
+thumbnailSizeInput.addEventListener("input", () => {
+  const next = clampThumbnailSize(thumbnailSizeInput.value);
+  thumbnailSizeValue.textContent = `${next}px`;
+  document.documentElement.style.setProperty("--thumbnail-size", `${next}px`);
+});
+thumbnailSizeInput.addEventListener("change", async () => {
+  thumbnailSize = clampThumbnailSize(thumbnailSizeInput.value);
+  applyThumbnailSize();
+  await writeStored(THUMBNAIL_SIZE_KEY, thumbnailSize);
+  await renderDirectory();
+});
+
+thumbnailDragModeInput.addEventListener("change", async () => {
+  thumbnailDragMode = thumbnailDragModeInput.value === "thumbnail" ? "thumbnail" : "original";
+  await writeStored(THUMBNAIL_DRAG_KEY, thumbnailDragMode);
+  setStatus(thumbnailDragMode === "thumbnail"
+    ? "Thumbnail drags now transfer the generated preview. Filename drags still transfer the original."
+    : "Thumbnail and filename drags both transfer the full original file.");
+});
+
 document.addEventListener("dragover", (event) => {
   if (!currentDirectory()) return;
   event.preventDefault();
@@ -633,8 +737,14 @@ document.addEventListener("drop", async (event) => {
 async function initialize() {
   showThumbnails = (await readStored(THUMBNAILS_KEY)) !== false;
   videoThumbnails = (await readStored(VIDEO_THUMBNAILS_KEY)) !== false;
+  thumbnailSize = clampThumbnailSize((await readStored(THUMBNAIL_SIZE_KEY)) ?? DEFAULT_THUMBNAIL_SIZE);
+  thumbnailDragMode = (await readStored(THUMBNAIL_DRAG_KEY)) === "thumbnail" ? "thumbnail" : "original";
+
   showThumbnailsInput.checked = showThumbnails;
   videoThumbnailsInput.checked = videoThumbnails;
+  thumbnailDragModeInput.value = thumbnailDragMode;
+  applyThumbnailSize();
+
   rootHandle = await readStored(ROOT_HANDLE_KEY);
   await refreshStorageLabels();
   await renderDirectory();
