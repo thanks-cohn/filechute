@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FileChute</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="title">FileChute</div>
+      <div class="subtitle">Your files, beside the browser.</div>
+    </div>
+    <button id="choose-root" type="button">Choose folder</button>
+  </header>
+
+  <section class="controls">
+    <button id="back" type="button" title="Back">‹</button>
+    <button id="home" type="button" title="Selected root">⌂</button>
+    <div id="breadcrumbs" class="breadcrumbs" aria-label="Current folder"></div>
+  </section>
+
+  <section class="options">
+    <label><input id="show-thumbnails" type="checkbox" checked> thumbnails</label>
+    <label><input id="video-thumbnails" type="checkbox" checked> video first frames</label>
+  </section>
+
+  <div id="status" class="status">Choose a local folder to begin.</div>
+  <main id="entries" class="entries"></main>
+
+  <template id="entry-template">
+    <article class="entry" draggable="true">
+      <div class="preview-wrap">
+        <img class="preview" alt="" hidden>
+        <div class="fallback-icon"></div>
+      </div>
+      <div class="entry-main">
+        <div class="entry-name"></div>
+        <button class="entry-path" type="button" title="Copy location"></button>
+      </div>
+    </article>
+  </template>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>
