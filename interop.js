@@ -4,6 +4,8 @@ export const FILECHUTE_VERSION = 1;
 export function makeFileChutePayload({
   kind,
   name,
+  originalName = name,
+  representation = "original",
   mime = "",
   relativePath = "",
   sourceUrl = null,
@@ -16,6 +18,8 @@ export function makeFileChutePayload({
     version: FILECHUTE_VERSION,
     kind,
     name,
+    originalName,
+    representation,
     mime,
     relativePath,
     sourceUrl,
@@ -36,7 +40,9 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
   if (payload.sourceUrl) {
     try { transfer.setData("text/uri-list", payload.sourceUrl); } catch {}
     try { transfer.setData("text/plain", payload.sourceUrl); } catch {}
-  } else if (payload.relativePath) {
+  } else if (!file && payload.relativePath) {
+    // Directory/custom-payload fallback only. For real files, do not let a
+    // path-like string outrank the actual File object at the drop target.
     try { transfer.setData("text/plain", payload.relativePath); } catch {}
   }
 }
