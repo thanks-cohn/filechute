@@ -5,7 +5,9 @@ const STANDALONE_HEIGHT = 760;
 const STANDALONE_WINDOW_KEY = "filechute-standalone-window-id";
 const ROOT_HANDLE_KEY = "filechute-root-handle";
 const TRANSFER_PREFIX = "filechute-transfer-v1:";
+const GALLERY_SOURCE_PREFIX = "filechute-gallery-source-v1:";
 const MAX_INLINE_TRANSFER_BYTES = 48 * 1024 * 1024;
+const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "ico", "apng"]);
 
 async function rememberedStandaloneWindow() {
   try {
@@ -86,9 +88,6 @@ async function injectPageDropBridge(tab) {
 async function toggleFileChute(tab) {
   const standalone = await rememberedStandaloneWindow();
 
-  // When the separate FileChute window is already open, clicking FileChute on
-  // an ordinary webpage arms that page as a real upload target and returns
-  // focus to the existing left-side FileChute window.
   if (standalone?.id && tab?.id) {
     try {
       await injectPageDropBridge(tab);
@@ -119,17 +118,31 @@ function transferKey(token) {
   return `${TRANSFER_PREFIX}${String(token || "")}`;
 }
 
+function gallerySourceKey(token) {
+  return `${GALLERY_SOURCE_PREFIX}${String(token || "")}`;
+}
+
 async function registerTransfer(message) {
   const token = String(message?.token || "");
   const relativePath = String(message?.relativePath || "");
   if (!token || !relativePath) return false;
 
-  await chrome.storage.session.set({
-    [transferKey(token)]: {
-      relativePath,
-      representation: message?.representation === "thumbnail" ? "thumbnail" : "original"
-    }
-  });
+  const record = {
+    relativePath,
+    representation: message?.representation === "thumbnail" ? "thumbnail" : "original",
+    kind: message?.kind === "directory" ? "directory" : "file",
+    name: String(message?.name || "")
+  };
+
+  await chrome.storage.session.set({ [transferKey(token)]: record });
+
+  // Directory drags can become saved FrameChute galleries, so remember their
+  // source mapping beyond the current browser session. The actual filesystem
+  // permission remains entirely controlled by Chromium and the saved root
+  // directory handle.
+  if (record.kind === "directory") {
+    await chrome.storage.local.set({ [gallerySourceKey(token)]: record });
+  }
   return true;
 }
 
@@ -143,6 +156,22 @@ async function consumeTransfer(token, relativePath) {
   return record;
 }
 
+async function gallerySourceRecord(token, directoryPath) {
+  const key = gallerySourceKey(token);
+  const persistent = await chrome.storage.local.get(key);
+  let record = persistent?.[key] || null;
+
+  if (!record) {
+    const session = await chrome.storage.session.get(transferKey(token));
+    record = session?.[transferKey(token)] || null;
+  }
+
+  if (!record) throw new Error("This FileChute gallery source is not registered. Drag the folder into FrameChute again.");
+  if (String(record.relativePath) !== String(directoryPath)) throw new Error("This gallery source does not match that FileChute folder.");
+  if (record.kind && record.kind !== "directory") throw new Error("This FileChute source is not a directory.");
+  return record;
+}
+
 async function hasReadPermission(handle) {
   if (!handle) return false;
   try {
@@ -152,23 +181,90 @@ async function hasReadPermission(handle) {
   }
 }
 
-async function fileForRelativePath(relativePath) {
+async function rootDirectory() {
   const root = await readStored(ROOT_HANDLE_KEY);
   if (!root || root.kind !== "directory") throw new Error("FileChute no longer has a selected root folder.");
   if (!(await hasReadPermission(root))) {
-    throw new Error(`Reconnect ${root.name || "the FileChute folder"} in FileChute, then drag again.`);
+    throw new Error(`Reconnect ${root.name || "the FileChute folder"} in FileChute, then try again.`);
   }
+  return root;
+}
 
+function pathSegments(relativePath, root) {
   const segments = String(relativePath || "").split("/").filter(Boolean);
   if (segments[0] === root.name) segments.shift();
+  return segments;
+}
+
+async function directoryForRelativePath(relativePath) {
+  const root = await rootDirectory();
+  const segments = pathSegments(relativePath, root);
+  let directory = root;
+  for (const segment of segments) directory = await directory.getDirectoryHandle(segment);
+  return directory;
+}
+
+async function fileForRelativePath(relativePath) {
+  const root = await rootDirectory();
+  const segments = pathSegments(relativePath, root);
   if (!segments.length) throw new Error("That FileChute item does not resolve to a file.");
 
   let directory = root;
-  for (const segment of segments.slice(0, -1)) {
-    directory = await directory.getDirectoryHandle(segment);
-  }
+  for (const segment of segments.slice(0, -1)) directory = await directory.getDirectoryHandle(segment);
   const handle = await directory.getFileHandle(segments.at(-1));
   return handle.getFile();
+}
+
+function extensionOf(name) {
+  const value = String(name || "").toLowerCase();
+  const index = value.lastIndexOf(".");
+  return index < 0 ? "" : value.slice(index + 1);
+}
+
+function isSupportedImagePath(path) {
+  return IMAGE_EXTENSIONS.has(extensionOf(path));
+}
+
+async function collectGalleryImages(directory, fullPath, displayPrefix, results) {
+  const children = [];
+  for await (const [name, handle] of directory.entries()) children.push({ name, handle });
+  children.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+
+  for (const child of children) {
+    const relativePath = [fullPath, child.name].filter(Boolean).join("/");
+    const displayPath = [displayPrefix, child.name].filter(Boolean).join("/");
+
+    if (child.handle.kind === "directory") {
+      await collectGalleryImages(child.handle, relativePath, displayPath, results);
+      continue;
+    }
+
+    if (child.handle.kind === "file" && isSupportedImagePath(child.name)) {
+      results.push({
+        name: child.name,
+        relativePath,
+        displayPath
+      });
+    }
+  }
+}
+
+async function listGalleryImages(message) {
+  const token = String(message?.sourceToken || "");
+  const directoryPath = String(message?.directoryPath || "");
+  if (!token || !directoryPath) throw new Error("The gallery source is missing its folder reference.");
+
+  await gallerySourceRecord(token, directoryPath);
+  const directory = await directoryForRelativePath(directoryPath);
+  const entries = [];
+  await collectGalleryImages(directory, directoryPath, "", entries);
+  return { ok: true, entries };
+}
+
+function pathInsideDirectory(directoryPath, entryPath) {
+  const base = String(directoryPath || "").replace(/\/+$/, "");
+  const entry = String(entryPath || "");
+  return Boolean(base && entry && entry.startsWith(`${base}/`));
 }
 
 function bytesToBase64(buffer) {
@@ -179,6 +275,31 @@ function bytesToBase64(buffer) {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + chunk));
   }
   return btoa(binary);
+}
+
+async function readGalleryImage(message) {
+  const token = String(message?.sourceToken || "");
+  const directoryPath = String(message?.directoryPath || "");
+  const entryPath = String(message?.entryPath || "");
+  if (!token || !directoryPath || !entryPath) throw new Error("The gallery image reference is incomplete.");
+
+  await gallerySourceRecord(token, directoryPath);
+  if (!pathInsideDirectory(directoryPath, entryPath)) throw new Error("That image is outside the selected gallery folder.");
+  if (!isSupportedImagePath(entryPath)) throw new Error("That gallery entry is not a supported image.");
+
+  const file = await fileForRelativePath(entryPath);
+  if (file.size > MAX_INLINE_TRANSFER_BYTES) {
+    throw new Error("This individual image is too large for the current gallery bridge.");
+  }
+
+  return {
+    ok: true,
+    name: file.name,
+    type: file.type || "application/octet-stream",
+    size: file.size,
+    lastModified: file.lastModified,
+    base64: bytesToBase64(await file.arrayBuffer())
+  };
 }
 
 async function readDraggedFile(message) {
@@ -205,6 +326,13 @@ async function readDraggedFile(message) {
   };
 }
 
+async function handleBridgeMessage(message) {
+  if (message?.type === "filechute-read-dragged-file-v1") return readDraggedFile(message);
+  if (message?.type === "chute-gallery-list-v1") return listGalleryImages(message);
+  if (message?.type === "chute-gallery-read-v1") return readGalleryImage(message);
+  return null;
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "filechute-register-transfer-v1") {
     void registerTransfer(message)
@@ -213,19 +341,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
-  if (message?.type === "filechute-read-dragged-file-v1") {
-    void readDraggedFile(message)
-      .then(sendResponse)
-      .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
-    return true;
-  }
-
-  return false;
+  if (!["filechute-read-dragged-file-v1", "chute-gallery-list-v1", "chute-gallery-read-v1"].includes(message?.type)) return false;
+  void handleBridgeMessage(message)
+    .then(sendResponse)
+    .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
+  return true;
 });
 
 chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
-  if (message?.type !== "filechute-read-dragged-file-v1") return false;
-  void readDraggedFile(message)
+  if (!["filechute-read-dragged-file-v1", "chute-gallery-list-v1", "chute-gallery-read-v1"].includes(message?.type)) return false;
+  void handleBridgeMessage(message)
     .then(sendResponse)
     .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
   return true;
