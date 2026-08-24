@@ -1,10 +1,14 @@
 {
   "manifest_version": 3,
   "name": "FileChute",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Browse user-selected local files from a left-side drawer and drag the originals where you need them.",
   "permissions": ["storage", "activeTab", "scripting"],
-  "optional_host_permissions": ["http://127.0.0.1:17891/*"],
+  "optional_host_permissions": [
+    "http://127.0.0.1:17891/*",
+    "http://*/*",
+    "https://*/*"
+  ],
   "action": {
     "default_title": "Toggle FileChute"
   },
@@ -18,6 +22,7 @@
         "sidepanel.html",
         "sidepanel.css",
         "sidepanel.js",
+        "receive-drops.js",
         "first-run.js",
         "storage.js",
         "interop.js",
