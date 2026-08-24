@@ -11,7 +11,8 @@ export function makeFileChutePayload({
   sourceUrl = null,
   parentPageUrl = null,
   size = null,
-  lastModified = null
+  lastModified = null,
+  sourceExtensionId = null
 }) {
   return {
     protocol: "filechute-item",
@@ -25,7 +26,8 @@ export function makeFileChutePayload({
     sourceUrl,
     parentPageUrl,
     size,
-    lastModified
+    lastModified,
+    sourceExtensionId: sourceExtensionId || globalThis.chrome?.runtime?.id || null
   };
 }
 
