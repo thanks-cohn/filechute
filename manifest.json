@@ -1,18 +1,29 @@
 {
   "manifest_version": 3,
   "name": "FileChute",
-  "version": "0.1.0",
-  "description": "Browse user-selected local files beside Chromium and drag the originals where you need them.",
-  "permissions": ["sidePanel", "storage"],
+  "version": "0.1.1",
+  "description": "Browse user-selected local files from a left-side drawer and drag the originals where you need them.",
+  "permissions": ["storage", "activeTab", "scripting"],
   "optional_host_permissions": ["http://127.0.0.1:17891/*"],
   "action": {
-    "default_title": "Open FileChute"
+    "default_title": "Toggle FileChute"
   },
   "background": {
     "service_worker": "service-worker.js",
     "type": "module"
   },
-  "side_panel": {
-    "default_path": "sidepanel.html"
-  }
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "sidepanel.html",
+        "sidepanel.css",
+        "sidepanel.js",
+        "storage.js",
+        "interop.js",
+        "metadata-store.js",
+        "thumbnail-store.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
