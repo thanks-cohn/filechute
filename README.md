@@ -2,9 +2,11 @@
 
 **Your files, beside the browser.**
 
-FileChute is a Chromium side-panel file navigator built for fast local access without turning every file interaction into an upload dialog.
+FileChute is a Chromium **left-side file drawer** built for fast local access without turning every file interaction into an upload dialog.
 
-Choose a local root folder once, browse it from the side panel, see lightweight recognition thumbnails for images and browser-decodable video, and drag the real underlying file wherever it belongs.
+Click the FileChute toolbar button and the drawer slides in from the left edge of the current webpage. Because FileChute no longer uses Chromium's native Side Panel, the **Chute Shelf can stay open at the same time on the right**.
+
+Choose a local root folder once, browse it from the left drawer, see lightweight recognition thumbnails for images and browser-decodable video, and drag the real underlying file wherever it belongs.
 
 ## The Chute family
 
@@ -14,6 +16,15 @@ FileChute, [Chute](https://github.com/thanks-cohn/chute), and [FrameChute](https
 FileChute  = find it
 Chute      = hold it
 FrameChute = arrange it
+```
+
+A normal working layout can be:
+
+```text
+┌──────────────┬──────────────────────────────┬──────────────┐
+│ FileChute    │         current tab          │ Chute Shelf  │
+│ LEFT drawer  │                              │ RIGHT panel  │
+└──────────────┴──────────────────────────────┴──────────────┘
 ```
 
 The shared rule is simple:
@@ -63,7 +74,8 @@ Metadata and thumbnail storage are independent choices. They may point at the sa
 
 ## MVP
 
-- Chromium Side Panel UI
+- left-side in-page drawer toggled from the FileChute toolbar button
+- deliberately does not consume Chromium's native Side Panel, allowing the Chute Shelf to remain open simultaneously
 - explicit local-root selection with the File System Access API
 - folder navigation and breadcrumbs
 - filename + selected-root-relative location display
@@ -89,6 +101,8 @@ FileChute does not scan the machine on installation. The user explicitly chooses
 FileChute does not invent or expose a hidden absolute operating-system path Chromium did not provide. Locations shown inside the extension are anchored to the root folder the user explicitly selected.
 
 External metadata and external thumbnail storage are opt-in and each destination is explicitly chosen by the user.
+
+The left drawer is injected only after the user clicks FileChute's toolbar button on the current tab. This keeps broad always-on website access out of the initial design.
 
 No FileChute cloud account or upload service is required.
 
