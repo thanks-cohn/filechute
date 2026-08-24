@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Browse user-selected local files beside Chromium and drag the originals where you need them.",
   "permissions": ["sidePanel", "storage"],
+  "optional_host_permissions": ["http://127.0.0.1:17891/*"],
   "action": {
     "default_title": "Open FileChute"
   },
