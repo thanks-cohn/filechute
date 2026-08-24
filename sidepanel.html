@@ -25,6 +25,7 @@
     <label><input id="show-thumbnails" type="checkbox" checked> thumbnails</label>
     <label><input id="video-thumbnails" type="checkbox" checked> video first frames</label>
     <button id="metadata-location" class="text-button" type="button">Metadata: browser only</button>
+    <button id="thumbnail-location" class="text-button" type="button">Thumbs: browser only</button>
   </section>
 
   <div id="status" class="status">Choose a local folder to begin.</div>
@@ -50,6 +51,17 @@
       <div class="dialog-actions">
         <button id="metadata-browser-only" value="browser-only" type="submit">Browser only</button>
         <button id="metadata-choose" class="primary" value="choose" type="button">Choose metadata folder</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="thumbnail-dialog">
+    <form method="dialog" class="dialog-card">
+      <h2>Keep thumbnails outside Chromium too?</h2>
+      <p>Generated image and video thumbnails are cached in the browser for speed. FileChute can also mirror the tiny WebP previews into a folder you choose so they survive browser cache or extension-data cleanup.</p>
+      <div class="dialog-actions">
+        <button id="thumbnail-browser-only" value="browser-only" type="submit">Browser only</button>
+        <button id="thumbnail-choose" class="primary" value="choose" type="button">Choose thumbnail folder</button>
       </div>
     </form>
   </dialog>
