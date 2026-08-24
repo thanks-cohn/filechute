@@ -38,13 +38,13 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
   transfer.setData(FILECHUTE_DRAG_TYPE, JSON.stringify(payload));
 
   if (payload?.transferToken && payload?.relativePath && globalThis.chrome?.runtime?.sendMessage) {
-    // Fire-and-forget registration of this user-initiated drag. The service
-    // worker keeps the token only briefly and consumes it after one transfer.
     globalThis.chrome.runtime.sendMessage({
       type: "filechute-register-transfer-v1",
       token: payload.transferToken,
       relativePath: payload.relativePath,
-      representation: payload.representation || "original"
+      representation: payload.representation || "original",
+      kind: payload.kind || "file",
+      name: payload.originalName || payload.name || ""
     }).catch(() => {});
   }
 
@@ -56,8 +56,6 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
     try { transfer.setData("text/uri-list", payload.sourceUrl); } catch {}
     try { transfer.setData("text/plain", payload.sourceUrl); } catch {}
   } else if (!file && payload.relativePath) {
-    // Directory/custom-payload fallback only. For real files, do not let a
-    // path-like string outrank the actual File object at the drop target.
     try { transfer.setData("text/plain", payload.relativePath); } catch {}
   }
 }
