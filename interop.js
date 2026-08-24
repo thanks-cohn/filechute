@@ -12,7 +12,8 @@ export function makeFileChutePayload({
   parentPageUrl = null,
   size = null,
   lastModified = null,
-  sourceExtensionId = null
+  sourceExtensionId = null,
+  transferToken = null
 }) {
   return {
     protocol: "filechute-item",
@@ -27,13 +28,25 @@ export function makeFileChutePayload({
     parentPageUrl,
     size,
     lastModified,
-    sourceExtensionId: sourceExtensionId || globalThis.chrome?.runtime?.id || null
+    sourceExtensionId: sourceExtensionId || globalThis.chrome?.runtime?.id || null,
+    transferToken: transferToken || globalThis.crypto?.randomUUID?.() || null
   };
 }
 
 export function writeFileChuteDrag(transfer, payload, file = null) {
   transfer.effectAllowed = "copy";
   transfer.setData(FILECHUTE_DRAG_TYPE, JSON.stringify(payload));
+
+  if (payload?.transferToken && payload?.relativePath && globalThis.chrome?.runtime?.sendMessage) {
+    // Fire-and-forget registration of this user-initiated drag. The service
+    // worker keeps the token only briefly and consumes it after one transfer.
+    globalThis.chrome.runtime.sendMessage({
+      type: "filechute-register-transfer-v1",
+      token: payload.transferToken,
+      relativePath: payload.relativePath,
+      representation: payload.representation || "original"
+    }).catch(() => {});
+  }
 
   if (file) {
     try { transfer.items.add(file); } catch {}
