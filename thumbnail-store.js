@@ -96,6 +96,6 @@ export async function saveThumbnail(key, blob) {
   }
 }
 
-export function makeThumbnailKey({ relativePath, size, lastModified, mime }) {
-  return [relativePath || "", size || 0, lastModified || 0, mime || ""].join("\u001f");
+export function makeThumbnailKey({ relativePath, size, lastModified, mime, thumbnailSize = 48 }) {
+  return [relativePath || "", size || 0, lastModified || 0, mime || "", thumbnailSize || 48].join("\u001f");
 }
