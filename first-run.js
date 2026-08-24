@@ -103,14 +103,21 @@ async function renderRootReconnect() {
 }
 
 metadataLocationButton?.addEventListener("click", async (event) => {
-  const status = await externalMetadataStatus();
-  if (!status.configured || status.available || metadataReconnectFailed) {
+  const labelSaysReconnect = metadataLocationButton.textContent?.includes("reconnect");
+  if (!labelSaysReconnect || metadataReconnectFailed) {
     metadataReconnectFailed = false;
     return;
   }
 
   event.preventDefault();
   event.stopImmediatePropagation();
+
+  const status = await externalMetadataStatus();
+  if (!status.configured || status.available) {
+    metadataLocationButton.textContent = status.configured ? `Metadata: ${status.name}` : "Metadata: browser only";
+    return;
+  }
+
   const handle = await getExternalMetadataDirectory({ request: true });
   if (handle) {
     metadataLocationButton.textContent = `Metadata: ${handle.name}`;
@@ -124,14 +131,21 @@ metadataLocationButton?.addEventListener("click", async (event) => {
 }, true);
 
 thumbnailLocationButton?.addEventListener("click", async (event) => {
-  const status = await externalThumbnailStatus();
-  if (!status.configured || status.available || thumbnailReconnectFailed) {
+  const labelSaysReconnect = thumbnailLocationButton.textContent?.includes("reconnect");
+  if (!labelSaysReconnect || thumbnailReconnectFailed) {
     thumbnailReconnectFailed = false;
     return;
   }
 
   event.preventDefault();
   event.stopImmediatePropagation();
+
+  const status = await externalThumbnailStatus();
+  if (!status.configured || status.available) {
+    thumbnailLocationButton.textContent = status.configured ? `Thumbs: ${status.name}` : "Thumbs: browser only";
+    return;
+  }
+
   const handle = await getExternalThumbnailDirectory({ request: true });
   if (handle) {
     thumbnailLocationButton.textContent = `Thumbs: ${handle.name}`;
