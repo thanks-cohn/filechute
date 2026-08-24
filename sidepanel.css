@@ -43,6 +43,10 @@ button {
 
 button:hover { background: #2a302d; }
 button:disabled { opacity: 0.35; cursor: default; }
+button.primary { background: #d7ff3f; border-color: #d7ff3f; color: #111; font-weight: 800; }
+button.primary:hover { background: #e4ff7a; }
+button.text-button { padding: 0; border: 0; background: transparent; color: #8f988f; font-size: 10px; }
+button.text-button:hover { background: transparent; color: #d7ff3f; }
 
 .controls {
   display: grid;
@@ -183,6 +187,23 @@ button:disabled { opacity: 0.35; cursor: default; }
   font-size: 12px;
   text-align: center;
 }
+
+dialog {
+  width: min(360px, calc(100vw - 24px));
+  border: 1px solid #363d39;
+  border-radius: 16px;
+  padding: 0;
+  background: #171a18;
+  color: #f4f7f2;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+dialog::backdrop { background: rgba(0, 0, 0, 0.58); backdrop-filter: blur(3px); }
+.dialog-card { padding: 18px; }
+.dialog-card h2 { margin: 0 0 9px; font-size: 17px; letter-spacing: -0.02em; }
+.dialog-card p { margin: 0; color: #aab2ad; font-size: 12px; line-height: 1.5; }
+.dialog-card code { color: #d7ff3f; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
 body.filechute-drop-active::before {
   content: "Drop into this folder";
