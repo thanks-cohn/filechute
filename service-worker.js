@@ -5,7 +5,6 @@ const STANDALONE_HEIGHT = 760;
 const STANDALONE_WINDOW_KEY = "filechute-standalone-window-id";
 const ROOT_HANDLE_KEY = "filechute-root-handle";
 const TRANSFER_PREFIX = "filechute-transfer-v1:";
-const TRANSFER_TTL_MS = 2 * 60 * 1000;
 const MAX_INLINE_TRANSFER_BYTES = 48 * 1024 * 1024;
 
 async function rememberedStandaloneWindow() {
@@ -41,10 +40,6 @@ async function standaloneBounds(tab) {
   const width = Math.max(300, Math.min(STANDALONE_WIDTH, Number(host?.width) || STANDALONE_WIDTH));
   const height = Math.max(480, Math.min(Number(host?.height) || STANDALONE_HEIGHT, 1400));
 
-  // Keep the fallback on the LEFT EDGE OF THE BROWSER WINDOW. The previous
-  // attempt subtracted the shelf width, which produces a negative X when the
-  // browser is maximized; Linux/Windows window managers may then relocate the
-  // popup somewhere arbitrary (for example the bottom of the desktop).
   return {
     width: Math.round(width),
     height: Math.round(height),
@@ -100,12 +95,11 @@ async function registerTransfer(message) {
   const token = String(message?.token || "");
   const relativePath = String(message?.relativePath || "");
   if (!token || !relativePath) return false;
-  const key = transferKey(token);
+
   await chrome.storage.session.set({
-    [key]: {
+    [transferKey(token)]: {
       relativePath,
-      representation: message?.representation === "thumbnail" ? "thumbnail" : "original",
-      expiresAt: Date.now() + TRANSFER_TTL_MS
+      representation: message?.representation === "thumbnail" ? "thumbnail" : "original"
     }
   });
   return true;
@@ -116,9 +110,8 @@ async function consumeTransfer(token, relativePath) {
   const stored = await chrome.storage.session.get(key);
   await chrome.storage.session.remove(key).catch(() => {});
   const record = stored?.[key];
-  if (!record) throw new Error("This FileChute drag token is missing or was already used.");
-  if (Number(record.expiresAt) < Date.now()) throw new Error("This FileChute drag token expired. Drag the item again.");
-  if (String(record.relativePath) !== String(relativePath)) throw new Error("The FileChute drag token does not match this file.");
+  if (!record) throw new Error("This FileChute drag is no longer available. Drag the item again.");
+  if (String(record.relativePath) !== String(relativePath)) throw new Error("The FileChute drag does not match this file.");
   return record;
 }
 
@@ -160,43 +153,53 @@ function bytesToBase64(buffer) {
   return btoa(binary);
 }
 
+async function readDraggedFile(message) {
+  const relativePath = String(message?.relativePath || "");
+  const token = String(message?.transferToken || "");
+  const transfer = await consumeTransfer(token, relativePath);
+
+  if (transfer.representation !== "original") {
+    throw new Error("This receiver currently requests the original file. Change thumbnail dragging to Original and try again.");
+  }
+
+  const file = await fileForRelativePath(relativePath);
+  if (file.size > MAX_INLINE_TRANSFER_BYTES) {
+    throw new Error("This file is too large for the current direct handoff. Large-file streaming is still being added.");
+  }
+
+  return {
+    ok: true,
+    name: file.name,
+    type: file.type || message?.mime || "application/octet-stream",
+    size: file.size,
+    lastModified: file.lastModified,
+    base64: bytesToBase64(await file.arrayBuffer())
+  };
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type !== "filechute-register-transfer-v1") return false;
-  void registerTransfer(message)
-    .then((ok) => sendResponse({ ok }))
-    .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
-  return true;
+  if (message?.type === "filechute-register-transfer-v1") {
+    void registerTransfer(message)
+      .then((ok) => sendResponse({ ok }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (message?.type === "filechute-read-dragged-file-v1") {
+    void readDraggedFile(message)
+      .then(sendResponse)
+      .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+
+  return false;
 });
 
 chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
   if (message?.type !== "filechute-read-dragged-file-v1") return false;
-
-  void (async () => {
-    const relativePath = String(message?.relativePath || "");
-    const token = String(message?.transferToken || "");
-    const transfer = await consumeTransfer(token, relativePath);
-    if (transfer.representation !== "original") {
-      throw new Error("This bridge currently transfers the full original. Switch thumbnail dragging to Original and try again.");
-    }
-
-    const file = await fileForRelativePath(relativePath);
-    if (file.size > MAX_INLINE_TRANSFER_BYTES) {
-      throw new Error("This file is too large for the current direct bridge. Large-file streaming is the next transport step.");
-    }
-
-    const base64 = bytesToBase64(await file.arrayBuffer());
-    sendResponse({
-      ok: true,
-      name: file.name,
-      type: file.type || message?.mime || "application/octet-stream",
-      size: file.size,
-      lastModified: file.lastModified,
-      base64
-    });
-  })().catch((error) => {
-    sendResponse({ ok: false, error: error?.message || String(error) });
-  });
-
+  void readDraggedFile(message)
+    .then(sendResponse)
+    .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
   return true;
 });
 
