@@ -12,7 +12,10 @@
       <div class="title">FileChute</div>
       <div class="subtitle">Your files, beside the browser.</div>
     </div>
-    <button id="choose-root" type="button">Choose folder</button>
+    <div class="topbar-actions">
+      <button id="open-settings" type="button">Settings</button>
+      <button id="choose-root" type="button">Choose folder</button>
+    </div>
   </header>
 
   <section class="controls">
@@ -21,20 +24,13 @@
     <div id="breadcrumbs" class="breadcrumbs" aria-label="Current folder"></div>
   </section>
 
-  <section class="options">
-    <label><input id="show-thumbnails" type="checkbox" checked> thumbnails</label>
-    <label><input id="video-thumbnails" type="checkbox" checked> video first frames</label>
-    <button id="metadata-location" class="text-button" type="button">Metadata: browser only</button>
-    <button id="thumbnail-location" class="text-button" type="button">Thumbs: browser only</button>
-  </section>
-
   <div id="status" class="status">Choose a local folder to begin.</div>
   <main id="entries" class="entries"></main>
 
   <template id="entry-template">
-    <article class="entry" draggable="true">
-      <div class="preview-wrap">
-        <img class="preview" alt="" hidden>
+    <article class="entry">
+      <div class="preview-wrap" title="Drag preview">
+        <img class="preview" alt="" hidden draggable="false">
         <div class="fallback-icon"></div>
       </div>
       <div class="entry-main">
@@ -43,6 +39,53 @@
       </div>
     </article>
   </template>
+
+  <dialog id="settings-dialog">
+    <form method="dialog" class="dialog-card settings-card">
+      <div class="dialog-heading">
+        <div>
+          <h2>FileChute settings</h2>
+          <p>Previews stay lightweight. Originals stay authoritative.</p>
+        </div>
+        <button class="dialog-close" value="close" type="submit" aria-label="Close settings">×</button>
+      </div>
+
+      <section class="settings-section">
+        <h3>Thumbnails</h3>
+        <label class="setting-row checkbox-row">
+          <span>Show thumbnails</span>
+          <input id="show-thumbnails" type="checkbox" checked>
+        </label>
+        <label class="setting-row checkbox-row">
+          <span>Video first-frame thumbnails</span>
+          <input id="video-thumbnails" type="checkbox" checked>
+        </label>
+        <label class="setting-stack" for="thumbnail-size">
+          <span class="setting-label-line"><span>Thumbnail size</span><output id="thumbnail-size-value">48px</output></span>
+          <input id="thumbnail-size" type="range" min="24" max="160" step="4" value="48">
+          <small>Default: 48px. Each file row grows or shrinks with this size.</small>
+        </label>
+      </section>
+
+      <section class="settings-section">
+        <h3>Dragging</h3>
+        <label class="setting-stack" for="thumbnail-drag-mode">
+          <span>When dragging the thumbnail</span>
+          <select id="thumbnail-drag-mode">
+            <option value="original" selected>Transfer the full original file</option>
+            <option value="thumbnail">Transfer the generated thumbnail</option>
+          </select>
+          <small>Default: original. Dragging the filename always transfers the full original file.</small>
+        </label>
+      </section>
+
+      <section class="settings-section">
+        <h3>Durable storage</h3>
+        <button id="metadata-location" class="storage-button" type="button">Metadata: browser only</button>
+        <button id="thumbnail-location" class="storage-button" type="button">Thumbs: browser only</button>
+      </section>
+    </form>
+  </dialog>
 
   <dialog id="metadata-dialog">
     <form method="dialog" class="dialog-card">
