@@ -1,3 +1,5 @@
+import "./browser-drag-normalizer.js";
+import "./incoming-drop-upgrade.js";
 import { readStored } from "./storage.js";
 
 const SHOW_IMAGES_KEY = "filechute-show-images";
