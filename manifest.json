@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FileChute",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "Browse user-selected local files from a persistent browser side panel and drag the originals where you need them.",
   "permissions": ["storage", "activeTab", "scripting", "sidePanel"],
   "optional_host_permissions": [
@@ -20,6 +20,12 @@
     "type": "module"
   },
   "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "js": ["chatgpt-image-drag-source.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    },
     {
       "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
       "js": ["page-drop-bridge.js", "page-resource-export.js"],
@@ -46,6 +52,7 @@
         "drop-feedback.js",
         "incoming-drop-upgrade.js",
         "browser-drag-normalizer.js",
+        "chatgpt-image-drop-fallback.js",
         "google-image-drop-fallback.js",
         "directory-drag.js",
         "settings-draft.js",
