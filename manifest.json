@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FileChute",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "description": "Browse user-selected local files from a persistent browser side panel and drag the originals where you need them.",
   "permissions": ["storage", "activeTab", "scripting", "sidePanel"],
   "optional_host_permissions": [
@@ -34,7 +34,7 @@
     },
     {
       "matches": ["https://*.google.com/*"],
-      "js": ["google-image-drag-source.js"],
+      "js": ["google-image-drag-source.js", "page-resource-export.js"],
       "run_at": "document_start",
       "all_frames": false
     },
