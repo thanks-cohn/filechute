@@ -28,6 +28,17 @@
     }
   }
 
+  function hasNativeFileFlavor(transfer) {
+    if (!transfer) return false;
+    try {
+      if ([...(transfer.types || [])].includes("Files")) return true;
+    } catch {}
+    try {
+      if ((transfer.files?.length || 0) > 0) return true;
+    } catch {}
+    return false;
+  }
+
   function base64File(response) {
     const binary = atob(String(response?.base64 || ""));
     const bytes = new Uint8Array(binary.length);
@@ -121,12 +132,17 @@
     if (!inputAccepts(input, file)) return false;
     try {
       const transfer = new DataTransfer();
-      if (input.multiple) for (const existing of [...(input.files || [])]) transfer.items.add(existing);
+
+      // A FileChute drag represents exactly the file being dragged now. Do not
+      // copy whatever happens to still be sitting in a page's multiple-file
+      // input. Some sites retain stale FileList entries after their visible UI
+      // has been cleared or submitted; re-adding those entries caused old
+      // ChatGPT attachments to reappear when a new unrelated file was dropped.
       transfer.items.add(file);
       input.files = transfer.files;
       input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
       input.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-      return input.files?.length > 0;
+      return input.files?.length === 1;
     } catch {
       return false;
     }
@@ -239,7 +255,16 @@
 
   document.addEventListener("dragover", (event) => {
     if (!activeBridge()) return;
-    if (![...(event.dataTransfer?.types || [])].includes(FILECHUTE_DRAG_TYPE)) return;
+    const types = [...(event.dataTransfer?.types || [])];
+    if (!types.includes(FILECHUTE_DRAG_TYPE)) return;
+
+    // When Chromium preserved FileChute's real File item, do not interfere at
+    // all. Let Google, Yandex, ChatGPT, and ordinary upload targets process the
+    // native file drag themselves. The bridge exists only for the cases where
+    // the browser dropped the binary item while crossing extension/page
+    // boundaries.
+    if (types.includes("Files")) return;
+
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
   }, true);
@@ -248,6 +273,11 @@
     if (!activeBridge()) return;
     const payload = parsePayload(event.dataTransfer);
     if (!payload) return;
+
+    // A native File item is cheaper and more reliable than copying the same
+    // image through extension messaging as base64. It also prevents the page
+    // from receiving both its own native drop and a second synthetic drop.
+    if (hasNativeFileFlavor(event.dataTransfer)) return;
 
     event.preventDefault();
 

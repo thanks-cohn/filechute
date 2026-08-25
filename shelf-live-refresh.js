@@ -23,8 +23,6 @@ style.textContent = `
 `;
 document.head.append(style);
 
-let pulseTimer = 0;
-
 function requestRefresh({ animate = false } = {}) {
   if (animate) {
     const button = document.querySelector("#filechute-refresh");
@@ -51,17 +49,13 @@ function installRefreshButton() {
   controls.insertBefore(button, breadcrumbs || null);
 }
 
-function startLiveRefresh() {
-  clearInterval(pulseTimer);
-  // The core shelf already compares directory signatures before rerendering.
-  // Pulse it frequently enough that files created outside FileChute appear
-  // almost immediately without burning a reload or disturbing the open path.
-  pulseTimer = setInterval(() => requestRefresh(), 250);
-}
-
 installRefreshButton();
-startLiveRefresh();
 
+// sidepanel.js already performs a guarded once-per-second filesystem scan.
+// Do not stack another 250 ms poll on top of it: on larger shelves that caused
+// hundreds of directory-entry reads while the user was dragging and could make
+// the side panel appear stuck after several cross-page drops. Keep this helper
+// event-driven instead: manual refresh plus focus/visibility refreshes.
 window.addEventListener("focus", () => requestRefresh());
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) requestRefresh();
