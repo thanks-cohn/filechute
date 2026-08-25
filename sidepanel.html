@@ -29,6 +29,9 @@
 
   <template id="entry-template">
     <article class="entry">
+      <button class="filechute-grip" type="button" draggable="true" title="Drag this item" aria-label="Drag this item">
+        <span class="filechute-grip-dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+      </button>
       <div class="preview-wrap" title="Drag preview">
         <img class="preview" alt="" hidden draggable="false">
         <div class="fallback-icon"></div>
@@ -112,6 +115,7 @@
   <script type="module" src="chute-drop-compat.js"></script>
   <script type="module" src="receive-drops.js"></script>
   <script type="module" src="sidepanel.js"></script>
+  <script type="module" src="ui-enhancements.js"></script>
   <script type="module" src="first-run.js"></script>
 </body>
 </html>
