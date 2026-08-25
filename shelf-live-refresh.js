@@ -1,5 +1,7 @@
 const controls = document.querySelector(".controls");
 const breadcrumbs = document.querySelector("#breadcrumbs");
+const status = document.querySelector("#status");
+const RECENT_KEY = "filechute-recent-drops-v1";
 
 const style = document.createElement("style");
 style.dataset.filechuteShelfRefresh = "true";
@@ -36,6 +38,49 @@ function requestRefresh({ animate = false } = {}) {
   window.dispatchEvent(new CustomEvent("filechute:filesystem-changed"));
 }
 
+function recentNames() {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(RECENT_KEY) || "[]");
+    return Array.isArray(value) ? value.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberRecent(name) {
+  const clean = String(name || "").trim();
+  if (!clean) return;
+  const next = [...new Set([clean, ...recentNames()])].slice(0, 24);
+  try { sessionStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch {}
+}
+
+function observeBrowserSaves() {
+  if (!status) return;
+  let lastMessage = "";
+  const sync = () => {
+    const message = String(status.textContent || "").trim();
+    if (!message || message === lastMessage) return;
+    lastMessage = message;
+
+    const match = message.match(/^Saved (.+) from (?:ChatGPT|Google Images|Yandex Images)\.$/i);
+    if (!match?.[1]) return;
+
+    // The browser-source handlers know the final filename only after the bytes
+    // have been written. Remember that actual saved name before their quick
+    // path-preserving reload so it rises to the top and gets the existing
+    // FileChute "new" treatment immediately.
+    rememberRecent(match[1]);
+    requestRefresh();
+  };
+
+  new MutationObserver(sync).observe(status, {
+    childList: true,
+    characterData: true,
+    subtree: true
+  });
+  sync();
+}
+
 function installRefreshButton() {
   if (!controls || document.querySelector("#filechute-refresh")) return;
   const button = document.createElement("button");
@@ -50,6 +95,7 @@ function installRefreshButton() {
 }
 
 installRefreshButton();
+observeBrowserSaves();
 
 // sidepanel.js already performs a guarded once-per-second filesystem scan.
 // Do not stack another 250 ms poll on top of it: on larger shelves that caused

@@ -1,3 +1,4 @@
+import "./browser-drag-normalizer.js";
 import { readStored } from "./storage.js";
 
 const ROOT_HANDLE_KEY = "filechute-root-handle";
@@ -58,7 +59,8 @@ function hasConcreteFileItems(transfer) {
   }
 
   // Browser image-search drags often advertise a zero-byte pseudo-file. Those
-  // must be left to the Google/Yandex/ChatGPT URL/page-resource fallbacks.
+  // are claimed first by browser-drag-normalizer.js and its Google/Yandex/
+  // ChatGPT source-specific fallbacks before this local-file receiver runs.
   return false;
 }
 
@@ -207,9 +209,9 @@ document.addEventListener("drop", (event) => {
   const transfer = event.dataTransfer;
   if (!transfer || customProtocol(transfer) || !hasConcreteFileItems(transfer) || dropBusy) return;
 
-  // Claim a real binary/native drop before the older fallbacks. Exactly one
-  // destination is chosen from the pointer: a hovered subdirectory, or the
-  // currently open FileChute directory. Never copy the same drop to both.
+  // Source-specific browser image handlers are registered before this listener
+  // by browser-drag-normalizer.js. If one of those recognizes the drag it owns
+  // the event. This path is only the ordinary local/native file receiver.
   event.preventDefault();
   event.stopImmediatePropagation();
   const targetPathNames = targetPathForEvent(event);
