@@ -7,6 +7,7 @@ const SHOW_VIDEOS_KEY = "filechute-show-videos";
 const SHOW_OTHER_FILES_KEY = "filechute-show-other-files";
 const SHOW_DIRECTORIES_KEY = "filechute-show-directories";
 const DIRECTORY_POSITION_KEY = "filechute-directory-position";
+const MEDIA_PRIORITY_KEY = "filechute-media-priority";
 const LIST_MODE_KEY = "filechute-directory-list-mode";
 const FILES_PER_PAGE_KEY = "filechute-files-per-page";
 const THUMBNAILS_KEY = "filechute-show-thumbnails";
@@ -33,6 +34,7 @@ const showVideosInput = document.querySelector("#show-videos");
 const showOtherFilesInput = document.querySelector("#show-other-files");
 const showDirectoriesInput = document.querySelector("#show-directories");
 const directoryPositionInput = document.querySelector("#directory-position");
+const mediaPriorityInput = document.querySelector("#media-priority");
 const listModeInput = document.querySelector("#directory-list-mode");
 const filesPerPageInput = document.querySelector("#files-per-page");
 const showThumbnailsInput = document.querySelector("#show-thumbnails");
@@ -58,6 +60,10 @@ function clampFilesPerPage(value) {
   const number = Number.parseInt(value, 10);
   if (!Number.isFinite(number)) return DEFAULT_FILES_PER_PAGE;
   return Math.min(MAX_FILES_PER_PAGE, Math.max(MIN_FILES_PER_PAGE, number));
+}
+
+function normalizeMediaPriority(value) {
+  return value === "images" || value === "videos" ? value : "mixed";
 }
 
 function syncDraftUi() {
@@ -125,6 +131,10 @@ async function loadSettingsIntoForm() {
     directoryPositionInput.value = (await readStored(DIRECTORY_POSITION_KEY)) === "bottom"
       ? "bottom"
       : "top";
+  }
+
+  if (mediaPriorityInput) {
+    mediaPriorityInput.value = normalizeMediaPriority(await readStored(MEDIA_PRIORITY_KEY));
   }
 
   if (listModeInput) {
@@ -195,6 +205,7 @@ function preserveCurrentPathForReload() {
 async function applySettings() {
   const launchMode = launchModeInput?.value === "window" ? "window" : "panel";
   const directoryPosition = directoryPositionInput?.value === "bottom" ? "bottom" : "top";
+  const mediaPriority = normalizeMediaPriority(mediaPriorityInput?.value);
   const listMode = listModeInput?.value === "all" ? "all" : "paged";
   const filesPerPage = clampFilesPerPage(filesPerPageInput?.value ?? DEFAULT_FILES_PER_PAGE);
   const thumbnailSize = clampThumbnailSize(thumbnailSizeInput?.value ?? 48);
@@ -210,6 +221,7 @@ async function applySettings() {
     writeStored(SHOW_OTHER_FILES_KEY, Boolean(showOtherFilesInput?.checked)),
     writeStored(SHOW_DIRECTORIES_KEY, Boolean(showDirectoriesInput?.checked)),
     writeStored(DIRECTORY_POSITION_KEY, directoryPosition),
+    writeStored(MEDIA_PRIORITY_KEY, mediaPriority),
     writeStored(LIST_MODE_KEY, listMode),
     writeStored(FILES_PER_PAGE_KEY, filesPerPage),
     writeStored(THUMBNAILS_KEY, Boolean(showThumbnailsInput?.checked)),

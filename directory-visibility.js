@@ -5,6 +5,7 @@ const SHOW_VIDEOS_KEY = "filechute-show-videos";
 const SHOW_OTHER_FILES_KEY = "filechute-show-other-files";
 const SHOW_DIRECTORIES_KEY = "filechute-show-directories";
 const DIRECTORY_POSITION_KEY = "filechute-directory-position";
+const MEDIA_PRIORITY_KEY = "filechute-media-priority";
 
 const entries = document.querySelector("#entries");
 const breadcrumbs = document.querySelector("#breadcrumbs");
@@ -13,7 +14,8 @@ const IMAGE_EXTENSIONS = new Set([
   "jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "ico", "apng"
 ]);
 const VIDEO_EXTENSIONS = new Set([
-  "mp4", "m4v", "webm", "ogv", "ogg", "mov", "mkv"
+  "mp4", "m4v", "webm", "ogv", "ogg", "mov", "mkv", "avi", "mpeg", "mpg",
+  "wmv", "flv", "ts", "m2ts", "mts", "3gp", "3g2", "vob"
 ]);
 
 let showImages = true;
@@ -21,6 +23,7 @@ let showVideos = true;
 let showOtherFiles = true;
 let showDirectories = true;
 let directoryPosition = "top";
+let mediaPriority = "mixed";
 
 function rootNameFromBreadcrumbs() {
   const text = String(breadcrumbs?.textContent || "").trim();
@@ -66,9 +69,14 @@ function categoryVisible(category) {
   return showOtherFiles;
 }
 
+function normalizeMediaPriority(value) {
+  return value === "images" || value === "videos" ? value : "mixed";
+}
+
 function applyViewPolicy(root = document) {
   if (!entries) return;
   entries.dataset.filechuteDirectoryPosition = directoryPosition;
+  entries.dataset.filechuteMediaPriority = mediaPriority;
 
   for (const row of root.querySelectorAll?.(".entry") || []) {
     const isDirectory = row.classList.contains("directory");
@@ -96,17 +104,41 @@ style.textContent = `
   #entries[data-filechute-directory-position="bottom"] > .entry.directory {
     order: 100000 !important;
   }
+
+  /* The default mixed mode deliberately leaves FileChute's existing file
+     ordering untouched. Priority modes only group the currently visible page. */
+  #entries[data-filechute-media-priority="images"] > .entry[data-filechute-media-kind="image"] {
+    order: -50000;
+  }
+  #entries[data-filechute-media-priority="images"] > .entry[data-filechute-media-kind="video"] {
+    order: -40000;
+  }
+  #entries[data-filechute-media-priority="images"] > .entry[data-filechute-media-kind="other"] {
+    order: -30000;
+  }
+
+  #entries[data-filechute-media-priority="videos"] > .entry[data-filechute-media-kind="video"] {
+    order: -50000;
+  }
+  #entries[data-filechute-media-priority="videos"] > .entry[data-filechute-media-kind="image"] {
+    order: -40000;
+  }
+  #entries[data-filechute-media-priority="videos"] > .entry[data-filechute-media-kind="other"] {
+    order: -30000;
+  }
+
   #entries > .entry.directory .fallback-icon { filter: none; }
 `;
 document.head.append(style);
 
 async function initializeViewPolicy() {
-  const [images, videos, other, directories, position] = await Promise.all([
+  const [images, videos, other, directories, position, priority] = await Promise.all([
     readStored(SHOW_IMAGES_KEY),
     readStored(SHOW_VIDEOS_KEY),
     readStored(SHOW_OTHER_FILES_KEY),
     readStored(SHOW_DIRECTORIES_KEY),
-    readStored(DIRECTORY_POSITION_KEY)
+    readStored(DIRECTORY_POSITION_KEY),
+    readStored(MEDIA_PRIORITY_KEY)
   ]);
 
   showImages = images !== false;
@@ -114,6 +146,7 @@ async function initializeViewPolicy() {
   showOtherFiles = other !== false;
   showDirectories = directories !== false;
   directoryPosition = position === "bottom" ? "bottom" : "top";
+  mediaPriority = normalizeMediaPriority(priority);
 
   disableAutomaticFolderDive();
   applyViewPolicy();
