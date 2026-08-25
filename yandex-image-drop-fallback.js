@@ -271,9 +271,11 @@ document.addEventListener("drop", (event) => {
   const directFile = directFileFromTransfer(transfer);
   const origins = originPatterns(capture.urls);
 
+  // Never interrupt the Yandex drag with a per-image host permission prompt.
+  // Existing access may be reused; otherwise try the source-page bridge first.
   let permissionPromise = Promise.resolve(false);
   if (origins.length) {
-    try { permissionPromise = chrome.permissions.request({ origins }); } catch {}
+    try { permissionPromise = chrome.permissions.contains({ origins }); } catch {}
   }
 
   void Promise.resolve(permissionPromise)
