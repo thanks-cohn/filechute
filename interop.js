@@ -33,6 +33,15 @@ export function makeFileChutePayload({
   };
 }
 
+function validWebUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 export function writeFileChuteDrag(transfer, payload, file = null) {
   transfer.effectAllowed = "copy";
   transfer.setData(FILECHUTE_DRAG_TYPE, JSON.stringify(payload));
@@ -48,15 +57,28 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
     }).catch(() => {});
   }
 
+  let fileAdded = false;
   if (file) {
-    try { transfer.items.add(file); } catch {}
+    try {
+      const before = transfer.items.length;
+      transfer.items.add(file);
+      fileAdded = transfer.items.length > before || transfer.files?.length > 0;
+    } catch {}
   }
 
-  if (payload.sourceUrl) {
-    try { transfer.setData("text/uri-list", payload.sourceUrl); } catch {}
-    try { transfer.setData("text/plain", payload.sourceUrl); } catch {}
-  } else if (!file && payload.relativePath) {
-    try { transfer.setData("text/plain", payload.relativePath); } catch {}
+  // When FileChute has the actual bytes, expose the drag as a file only.
+  // Search engines such as Google Images and Yandex otherwise prefer the
+  // text/uri-list flavor and try to parse stale source metadata as a link,
+  // producing errors such as "Can't use this link" instead of uploading the
+  // image. Keep source URLs only as a fallback when no File item was added.
+  if (!fileAdded) {
+    const sourceUrl = validWebUrl(payload?.sourceUrl);
+    if (sourceUrl) {
+      try { transfer.setData("text/uri-list", sourceUrl); } catch {}
+      try { transfer.setData("text/plain", sourceUrl); } catch {}
+    } else if (!file && payload?.relativePath) {
+      try { transfer.setData("text/plain", payload.relativePath); } catch {}
+    }
   }
 }
 
