@@ -52,6 +52,11 @@
     return target.closest("img") || target.querySelector("img");
   }
 
+  function shortTitle(image) {
+    const value = String(image.alt || image.title || "ChatGPT image").replace(/\s+/g, " ").trim();
+    return (value || "ChatGPT image").slice(0, 120);
+  }
+
   document.addEventListener("dragstart", (event) => {
     const image = imageForDragTarget(event.target);
     if (!image) return;
@@ -62,7 +67,7 @@
     const payload = {
       capturedAt: Date.now(),
       pageUrl: location.href,
-      title: image.alt || image.title || "ChatGPT image",
+      title: shortTitle(image),
       urls
     };
 
