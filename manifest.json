@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FileChute",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "Browse user-selected local files from a persistent browser side panel and drag the originals where you need them.",
   "permissions": ["storage", "activeTab", "scripting", "sidePanel"],
   "optional_host_permissions": [
@@ -37,6 +37,19 @@
       "js": ["google-image-drag-source.js"],
       "run_at": "document_start",
       "all_frames": false
+    },
+    {
+      "matches": [
+        "https://*.yandex.com/*",
+        "https://*.yandex.ru/*",
+        "https://*.yandex.kz/*",
+        "https://*.yandex.by/*",
+        "https://*.yandex.uz/*",
+        "https://*.yandex.com.tr/*"
+      ],
+      "js": ["yandex-image-drag-source.js", "page-resource-export.js"],
+      "run_at": "document_start",
+      "all_frames": false
     }
   ],
   "web_accessible_resources": [
@@ -54,6 +67,7 @@
         "browser-drag-normalizer.js",
         "chatgpt-image-drop-fallback.js",
         "google-image-drop-fallback.js",
+        "yandex-image-drop-fallback.js",
         "directory-drag.js",
         "settings-draft.js",
         "chute-drop-compat.js",
