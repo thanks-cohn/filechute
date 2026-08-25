@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "FileChute",
-  "version": "0.1.11",
-  "description": "Browse user-selected local files from a floating Chromium file window and drag the originals where you need them.",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "version": "0.1.12",
+  "description": "Browse user-selected local files from a persistent browser side panel and drag the originals where you need them.",
+  "permissions": ["storage", "activeTab", "scripting", "sidePanel"],
   "optional_host_permissions": [
     "http://127.0.0.1:17891/*",
     "http://*/*",
@@ -11,6 +11,9 @@
   ],
   "action": {
     "default_title": "Toggle FileChute"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
   },
   "background": {
     "service_worker": "service-worker.js",
@@ -37,6 +40,7 @@
         "settings-draft.js",
         "chute-drop-compat.js",
         "receive-drops.js",
+        "folder-picker.js",
         "first-run.js",
         "storage.js",
         "interop.js",
