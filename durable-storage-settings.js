@@ -9,6 +9,7 @@ import {
   setExternalThumbnailEnabled
 } from "./thumbnail-store.js";
 import "./image-resize-v3.js";
+import "./resize-usability-patch.js";
 
 const metadataToggle = document.querySelector("#metadata-local-enabled");
 const thumbnailToggle = document.querySelector("#thumbnail-local-enabled");
