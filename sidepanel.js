@@ -20,7 +20,12 @@ const VIDEO_THUMBNAILS_KEY = "filechute-video-thumbnails";
 const THUMBNAIL_SIZE_KEY = "filechute-thumbnail-size";
 const THUMBNAIL_DRAG_KEY = "filechute-thumbnail-drag-mode";
 const LIST_MODE_KEY = "filechute-directory-list-mode";
-const VIEW_MODE_KEY = "filechute-view-mode";
+const FILES_PER_PAGE_KEY = "filechute-files-per-page";
+const SHOW_IMAGES_KEY = "filechute-show-images";
+const SHOW_VIDEOS_KEY = "filechute-show-videos";
+const SHOW_OTHER_FILES_KEY = "filechute-show-other-files";
+const SHOW_DIRECTORIES_KEY = "filechute-show-directories";
+const LEGACY_VIEW_MODE_KEY = "filechute-view-mode";
 const DIRECTORY_POSITION_KEY = "filechute-directory-position";
 const METADATA_CHOICE_KEY = "filechute-metadata-storage-choice";
 const THUMBNAIL_CHOICE_KEY = "filechute-thumbnail-storage-choice";
@@ -29,10 +34,17 @@ const RECENT_KEY = "filechute-recent-drops-v1";
 const DEFAULT_THUMBNAIL_SIZE = 48;
 const MIN_THUMBNAIL_SIZE = 24;
 const MAX_THUMBNAIL_SIZE = 160;
-const PAGE_SIZE = 50;
-const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "ico", "apng"]);
+const DEFAULT_FILES_PER_PAGE = 50;
+const MIN_FILES_PER_PAGE = 1;
+const MAX_FILES_PER_PAGE = 5000;
 
-const chooseRootButton = document.querySelector("#choose-root");
+const IMAGE_EXTENSIONS = new Set([
+  "jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "ico", "apng"
+]);
+const VIDEO_EXTENSIONS = new Set([
+  "mp4", "m4v", "webm", "ogv", "ogg", "mov", "mkv"
+]);
+
 const settingsButton = document.querySelector("#open-settings");
 const backButton = document.querySelector("#back");
 const homeButton = document.querySelector("#home");
@@ -47,18 +59,8 @@ const entriesElement = document.querySelector("#entries");
 const entryTemplate = document.querySelector("#entry-template");
 
 const settingsDialog = document.querySelector("#settings-dialog");
-const settingsForm = document.querySelector("#settings-form");
-const settingsCancel = document.querySelector("#settings-cancel");
-const settingsCancelX = document.querySelector("#settings-cancel-x");
-const settingsOk = document.querySelector("#settings-ok");
-const viewModeInput = document.querySelector("#view-mode");
-const directoryPositionInput = document.querySelector("#directory-position");
-const listModeInput = document.querySelector("#directory-list-mode");
-const showThumbnailsInput = document.querySelector("#show-thumbnails");
-const videoThumbnailsInput = document.querySelector("#video-thumbnails");
 const thumbnailSizeInput = document.querySelector("#thumbnail-size");
 const thumbnailSizeValue = document.querySelector("#thumbnail-size-value");
-const thumbnailDragModeInput = document.querySelector("#thumbnail-drag-mode");
 const metadataLocationButton = document.querySelector("#metadata-location");
 const thumbnailLocationButton = document.querySelector("#thumbnail-location");
 
@@ -76,7 +78,11 @@ let videoThumbnails = true;
 let thumbnailSize = DEFAULT_THUMBNAIL_SIZE;
 let thumbnailDragMode = "original";
 let listMode = "paged";
-let viewMode = "all";
+let filesPerPage = DEFAULT_FILES_PER_PAGE;
+let showImages = true;
+let showVideos = true;
+let showOtherFiles = true;
+let showDirectories = true;
 let directoryPosition = "top";
 
 const previewUrls = new Set();
@@ -97,10 +103,33 @@ function isImageName(name) {
   return IMAGE_EXTENSIONS.has(extensionOf(name));
 }
 
+function isVideoName(name) {
+  return VIDEO_EXTENSIONS.has(extensionOf(name));
+}
+
+function classifyName(name) {
+  if (isImageName(name)) return "image";
+  if (isVideoName(name)) return "video";
+  return "other";
+}
+
+function fileTypeVisible(name) {
+  const kind = classifyName(name);
+  if (kind === "image") return showImages;
+  if (kind === "video") return showVideos;
+  return showOtherFiles;
+}
+
 function clampThumbnailSize(value) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return DEFAULT_THUMBNAIL_SIZE;
   return Math.min(MAX_THUMBNAIL_SIZE, Math.max(MIN_THUMBNAIL_SIZE, parsed));
+}
+
+function clampFilesPerPage(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_FILES_PER_PAGE;
+  return Math.min(MAX_FILES_PER_PAGE, Math.max(MIN_FILES_PER_PAGE, parsed));
 }
 
 function currentDirectory() {
@@ -141,22 +170,12 @@ async function queryPermission(handle, mode = "readwrite") {
   }
 }
 
-async function requestPermission(handle, mode = "readwrite") {
-  if (!handle) return false;
-  if (await queryPermission(handle, mode)) return true;
-  try {
-    return (await handle.requestPermission({ mode })) === "granted";
-  } catch {
-    return false;
-  }
-}
-
 function fallbackIcon(handle, file = null) {
   if (handle?.kind === "directory") return "📁";
   const mime = String(file?.type || "").toLowerCase();
   const ext = extensionOf(handle?.name || file?.name || "");
   if (mime.startsWith("image/") || IMAGE_EXTENSIONS.has(ext)) return "🖼️";
-  if (mime.startsWith("video/") || ["mp4", "m4v", "webm", "ogv", "mov", "mkv"].includes(ext)) return "🎞️";
+  if (mime.startsWith("video/") || VIDEO_EXTENSIONS.has(ext)) return "🎞️";
   if (mime.startsWith("audio/") || ["mp3", "wav", "ogg", "oga", "opus", "flac", "aac", "m4a", "weba"].includes(ext)) return "🎵";
   if (mime === "application/pdf" || ext === "pdf") return "📕";
   if (mime.startsWith("text/") || ["txt", "md", "json", "csv", "log"].includes(ext)) return "📝";
@@ -208,14 +227,23 @@ async function videoThumbnail(file) {
   try {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("Video thumbnail timed out")), 6000);
-      const done = () => { clearTimeout(timer); resolve(); };
-      const fail = () => { clearTimeout(timer); reject(new Error("Chromium could not decode this video preview")); };
+      const done = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const fail = () => {
+        clearTimeout(timer);
+        reject(new Error("Chromium could not decode this video preview"));
+      };
       video.addEventListener("loadeddata", done, { once: true });
       video.addEventListener("error", fail, { once: true });
       video.load();
     });
 
-    if (!video.videoWidth || !video.videoHeight) throw new Error("Video has no decodable frame");
+    if (!video.videoWidth || !video.videoHeight) {
+      throw new Error("Video has no decodable frame");
+    }
+
     const canvas = document.createElement("canvas");
     canvas.width = thumbnailSize;
     canvas.height = thumbnailSize;
@@ -243,7 +271,7 @@ async function thumbnailFor(file, relativePath) {
 
   const ext = extensionOf(file.name);
   const imageLike = file.type.startsWith("image/") || IMAGE_EXTENSIONS.has(ext);
-  const videoLike = file.type.startsWith("video/") || ["mp4", "m4v", "webm", "ogv", "mov", "mkv"].includes(ext);
+  const videoLike = file.type.startsWith("video/") || VIDEO_EXTENSIONS.has(ext);
   let generated = null;
 
   if (imageLike) generated = await imageThumbnail(file);
@@ -273,11 +301,16 @@ function recentNames() {
 
 function saveRecent(names) {
   const next = [...new Set([...names.filter(Boolean).map(String), ...recentNames()])].slice(0, 24);
-  try { sessionStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch {}
+  try {
+    sessionStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch {}
 }
 
 function sortByName(items) {
-  return items.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+  return items.sort((a, b) => a.name.localeCompare(b.name, undefined, {
+    numeric: true,
+    sensitivity: "base"
+  }));
 }
 
 function sortFiles(items) {
@@ -346,12 +379,36 @@ function thumbnailFileName(name) {
 }
 
 const MIME_BY_EXTENSION = {
-  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp",
-  avif: "image/avif", bmp: "image/bmp", svg: "image/svg+xml", ico: "image/x-icon", apng: "image/apng",
-  pdf: "application/pdf", mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", oga: "audio/ogg",
-  opus: "audio/opus", flac: "audio/flac", aac: "audio/aac", m4a: "audio/mp4", weba: "audio/webm",
-  mp4: "video/mp4", m4v: "video/mp4", webm: "video/webm", ogv: "video/ogg", mov: "video/quicktime",
-  txt: "text/plain", md: "text/markdown", json: "application/json", csv: "text/csv"
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+  avif: "image/avif",
+  bmp: "image/bmp",
+  svg: "image/svg+xml",
+  ico: "image/x-icon",
+  apng: "image/apng",
+  pdf: "application/pdf",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  opus: "audio/opus",
+  flac: "audio/flac",
+  aac: "audio/aac",
+  m4a: "audio/mp4",
+  weba: "audio/webm",
+  mp4: "video/mp4",
+  m4v: "video/mp4",
+  webm: "video/webm",
+  ogv: "video/ogg",
+  mov: "video/quicktime",
+  mkv: "video/x-matroska",
+  txt: "text/plain",
+  md: "text/markdown",
+  json: "application/json",
+  csv: "text/csv"
 };
 
 function normalizedTransferFile(file, name) {
@@ -359,7 +416,10 @@ function normalizedTransferFile(file, name) {
   const inferred = MIME_BY_EXTENSION[extensionOf(name)] || "";
   if (!inferred || file.type === inferred) return file;
   if (file.type && file.type !== "application/octet-stream") return file;
-  return new File([file], name || file.name, { type: inferred, lastModified: file.lastModified });
+  return new File([file], name || file.name, {
+    type: inferred,
+    lastModified: file.lastModified
+  });
 }
 
 function startDrag({ event, row, preview, payload, file }) {
@@ -368,7 +428,9 @@ function startDrag({ event, row, preview, payload, file }) {
   row.classList.add("dragging");
   writeFileChuteDrag(transfer, payload, file);
   if (preview && !preview.hidden) {
-    try { transfer.setDragImage(preview, thumbnailSize / 2, thumbnailSize / 2); } catch {}
+    try {
+      transfer.setDragImage(preview, thumbnailSize / 2, thumbnailSize / 2);
+    } catch {}
   }
 }
 
@@ -437,7 +499,14 @@ async function renderEntry(item, generation) {
 
     grip.addEventListener("dragstart", (event) => {
       event.stopPropagation();
-      const payload = buildPayload({ handle, name, file: null, metadata: null, relativePath, representation: "original" });
+      const payload = buildPayload({
+        handle,
+        name,
+        file: null,
+        metadata: null,
+        relativePath,
+        representation: "original"
+      });
       startDrag({ event, row, preview: null, payload, file: null });
     });
     grip.addEventListener("dragend", () => finishDrag(row));
@@ -465,7 +534,14 @@ async function renderEntry(item, generation) {
   fallback.textContent = fallbackIcon(handle, file);
 
   const dragOriginal = (event) => {
-    const payload = buildPayload({ handle, name, file, metadata, relativePath, representation: "original" });
+    const payload = buildPayload({
+      handle,
+      name,
+      file,
+      metadata,
+      relativePath,
+      representation: "original"
+    });
     startDrag({ event, row, preview, payload, file });
   };
 
@@ -476,6 +552,8 @@ async function renderEntry(item, generation) {
     event.preventDefault();
     event.stopPropagation();
   });
+  grip.addEventListener("dragstart", dragOriginal);
+  grip.addEventListener("dragend", () => finishDrag(row));
 
   nameElement.draggable = true;
   nameElement.title = "Drag the original file";
@@ -490,7 +568,14 @@ async function renderEntry(item, generation) {
         type: "image/webp",
         lastModified: Date.now()
       });
-      const payload = buildPayload({ handle, name, file, metadata, relativePath, representation: "thumbnail" });
+      const payload = buildPayload({
+        handle,
+        name,
+        file,
+        metadata,
+        relativePath,
+        representation: "thumbnail"
+      });
       startDrag({ event, row, preview, payload, file: thumbFile });
       return;
     }
@@ -502,7 +587,7 @@ async function renderEntry(item, generation) {
 
   const ext = extensionOf(file.name);
   const imageLike = file.type.startsWith("image/") || IMAGE_EXTENSIONS.has(ext);
-  const videoLike = file.type.startsWith("video/") || ["mp4", "m4v", "webm", "ogv", "mov", "mkv"].includes(ext);
+  const videoLike = file.type.startsWith("video/") || VIDEO_EXTENSIONS.has(ext);
   if (!imageLike && !(videoThumbnails && videoLike)) return;
 
   try {
@@ -516,15 +601,16 @@ async function renderEntry(item, generation) {
 
 function filteredSnapshot() {
   const query = String(searchInput?.value || "").trim().toLocaleLowerCase();
-  const matches = directorySnapshot.filter((item) => !query || item.name.toLocaleLowerCase().includes(query));
+  const matches = directorySnapshot.filter(
+    (item) => !query || item.name.toLocaleLowerCase().includes(query)
+  );
 
-  let directories = matches.filter((item) => item.handle.kind === "directory");
-  let files = matches.filter((item) => item.handle.kind === "file");
-
-  if (viewMode === "images") {
-    directories = [];
-    files = files.filter((item) => isImageName(item.name));
-  }
+  let directories = showDirectories
+    ? matches.filter((item) => item.handle.kind === "directory")
+    : [];
+  let files = matches
+    .filter((item) => item.handle.kind === "file")
+    .filter((item) => fileTypeVisible(item.name));
 
   sortByName(directories);
   sortFiles(files);
@@ -539,14 +625,18 @@ function updatePageControls(totalFiles) {
     return;
   }
 
-  const pageCount = Math.max(1, Math.ceil(totalFiles / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(totalFiles / filesPerPage));
   pageIndex = Math.min(Math.max(0, pageIndex), pageCount - 1);
-  const first = totalFiles ? pageIndex * PAGE_SIZE + 1 : 0;
-  const last = Math.min(totalFiles, (pageIndex + 1) * PAGE_SIZE);
+  const first = totalFiles ? pageIndex * filesPerPage + 1 : 0;
+  const last = Math.min(totalFiles, (pageIndex + 1) * filesPerPage);
 
   pageControls.hidden = false;
   pagePrevButton.disabled = pageIndex <= 0;
   pageNextButton.disabled = pageIndex >= pageCount - 1;
+  pagePrevButton.title = `Previous ${filesPerPage} files`;
+  pageNextButton.title = `Next ${filesPerPage} files`;
+  pagePrevButton.setAttribute("aria-label", pagePrevButton.title);
+  pageNextButton.setAttribute("aria-label", pageNextButton.title);
   pageLabel.textContent = totalFiles
     ? `${pageIndex + 1} / ${pageCount} · ${first}–${last} of ${totalFiles}`
     : "1 / 1 · no files";
@@ -562,10 +652,10 @@ function renderSnapshot() {
 
   const visibleFiles = listMode === "all"
     ? files
-    : files.slice(pageIndex * PAGE_SIZE, pageIndex * PAGE_SIZE + PAGE_SIZE);
+    : files.slice(pageIndex * filesPerPage, pageIndex * filesPerPage + filesPerPage);
 
   if (!directories.length && !visibleFiles.length) {
-    entriesElement.innerHTML = `<div class="empty">${query ? "No matching items." : "This folder is empty."}</div>`;
+    entriesElement.innerHTML = `<div class="empty">${query ? "No matching items." : "Nothing in this folder matches the current visibility settings."}</div>`;
   } else {
     const top = directoryPosition === "top" ? directories : [];
     const bottom = directoryPosition === "bottom" ? directories : [];
@@ -574,13 +664,13 @@ function renderSnapshot() {
     void Promise.allSettled(tasks);
   }
 
-  const folderText = viewMode === "images"
-    ? "folders hidden"
-    : `${directories.length} folder${directories.length === 1 ? "" : "s"}`;
-  const fileText = `${files.length} file${files.length === 1 ? "" : "s"}`;
+  const folderText = showDirectories
+    ? `${directories.length} folder${directories.length === 1 ? "" : "s"}`
+    : "folders hidden";
+  const fileText = `${files.length} visible file${files.length === 1 ? "" : "s"}`;
   const modeText = listMode === "all"
-    ? "all loaded"
-    : `${visibleFiles.length} shown · page ${pageIndex + 1}/${Math.max(1, Math.ceil(files.length / PAGE_SIZE))}`;
+    ? "whole directory"
+    : `${visibleFiles.length} shown · ${filesPerPage}/page · page ${pageIndex + 1}/${Math.max(1, Math.ceil(files.length / filesPerPage))}`;
   setStatus(`${folderText} · ${fileText} · ${modeText} · ${currentLocation()}`);
 }
 
@@ -588,14 +678,16 @@ async function enumerateCurrentDirectory() {
   const directory = currentDirectory();
   if (!directory) return [];
   const items = [];
-  for await (const [name, handle] of directory.entries()) items.push({ name, handle });
+  for await (const [name, handle] of directory.entries()) {
+    items.push({ name, handle });
+  }
   return items;
 }
 
 async function renderDirectory() {
-  breadcrumbs.textContent = breadcrumbsText();
-  backButton.disabled = pathHandles.length === 0;
-  homeButton.disabled = pathHandles.length === 0;
+  if (breadcrumbs) breadcrumbs.textContent = breadcrumbsText();
+  if (backButton) backButton.disabled = pathHandles.length === 0;
+  if (homeButton) homeButton.disabled = pathHandles.length === 0;
 
   const directory = currentDirectory();
   if (!directory) {
@@ -635,6 +727,7 @@ async function restorePathIfNeeded() {
   } catch {}
 
   if (!rootHandle || !Array.isArray(saved) || !saved.length) return;
+
   let directory = rootHandle;
   const handles = [];
   const names = [];
@@ -653,57 +746,16 @@ async function restorePathIfNeeded() {
   pathNames = names;
 }
 
-async function chooseDirectoryFromTopLevel() {
-  if (typeof window.showDirectoryPicker !== "function") {
-    throw new Error("This Chromium build does not expose the directory picker FileChute needs.");
-  }
-
-  try {
-    return await window.showDirectoryPicker({ mode: "readwrite", startIn: "pictures" });
-  } catch (error) {
-    if (error?.name === "AbortError") throw error;
-    if (error?.name !== "TypeError" && error?.name !== "NotSupportedError") throw error;
-    return window.showDirectoryPicker({ mode: "readwrite" });
-  }
-}
-
-async function chooseRoot() {
-  if (window.top !== window) {
-    setStatus("Opening the FileChute window so Chromium can show the folder picker…");
-    try {
-      await chrome.runtime.sendMessage({ type: "filechute-open-standalone-v1" });
-    } catch (error) {
-      console.error("Could not open standalone FileChute", error);
-      setStatus("Open FileChute from its extension icon, then choose the folder there.", true);
-    }
-    return;
-  }
-
-  try {
-    const handle = await chooseDirectoryFromTopLevel();
-    if (!(await requestPermission(handle))) return;
-    rootHandle = handle;
-    pathHandles = [];
-    pathNames = [];
-    resetPage();
-    if (searchInput) searchInput.value = "";
-    await writeStored(ROOT_HANDLE_KEY, handle);
-    await renderDirectory();
-  } catch (error) {
-    if (error?.name === "AbortError") return;
-    console.error("Could not choose FileChute folder", error);
-    setStatus(error?.message || "Could not choose that folder.", true);
-  }
-}
-
 async function refreshStorageLabels() {
   const metadata = await externalMetadataStatus();
   const thumbs = await externalThumbnailStatus();
+
   if (metadataLocationButton) {
     metadataLocationButton.textContent = metadata.configured
       ? `Metadata: ${metadata.name}${metadata.available ? "" : " · reconnect"}`
       : "Metadata: browser only";
   }
+
   if (thumbnailLocationButton) {
     thumbnailLocationButton.textContent = thumbs.configured
       ? `Thumbs: ${thumbs.name}${thumbs.available ? "" : " · reconnect"}`
@@ -711,67 +763,22 @@ async function refreshStorageLabels() {
   }
 }
 
-function syncSettingsForm() {
-  if (viewModeInput) viewModeInput.value = viewMode;
-  if (directoryPositionInput) directoryPositionInput.value = directoryPosition;
-  if (listModeInput) listModeInput.value = listMode;
-  if (showThumbnailsInput) showThumbnailsInput.checked = showThumbnails;
-  if (videoThumbnailsInput) videoThumbnailsInput.checked = videoThumbnails;
-  if (thumbnailSizeInput) thumbnailSizeInput.value = String(thumbnailSize);
-  if (thumbnailSizeValue) thumbnailSizeValue.textContent = `${thumbnailSize}px`;
-  if (thumbnailDragModeInput) thumbnailDragModeInput.value = thumbnailDragMode;
-}
-
-function cancelSettings() {
-  syncSettingsForm();
-  settingsDialog?.close("cancel");
-}
-
-async function applySettingsFromForm() {
-  const nextViewMode = viewModeInput?.value === "images" ? "images" : "all";
-  const nextDirectoryPosition = directoryPositionInput?.value === "bottom" ? "bottom" : "top";
-  const nextListMode = listModeInput?.value === "all" ? "all" : "paged";
-  const nextShowThumbnails = Boolean(showThumbnailsInput?.checked);
-  const nextVideoThumbnails = Boolean(videoThumbnailsInput?.checked);
-  const nextThumbnailSize = clampThumbnailSize(thumbnailSizeInput?.value ?? thumbnailSize);
-  const nextThumbnailDragMode = thumbnailDragModeInput?.value === "thumbnail" ? "thumbnail" : "original";
-
-  viewMode = nextViewMode;
-  directoryPosition = nextDirectoryPosition;
-  listMode = nextListMode;
-  showThumbnails = nextShowThumbnails;
-  videoThumbnails = nextVideoThumbnails;
-  thumbnailSize = nextThumbnailSize;
-  thumbnailDragMode = nextThumbnailDragMode;
-  resetPage();
-  applyThumbnailSize();
-
-  await Promise.all([
-    writeStored(VIEW_MODE_KEY, viewMode),
-    writeStored(DIRECTORY_POSITION_KEY, directoryPosition),
-    writeStored(LIST_MODE_KEY, listMode),
-    writeStored(THUMBNAILS_KEY, showThumbnails),
-    writeStored(VIDEO_THUMBNAILS_KEY, videoThumbnails),
-    writeStored(THUMBNAIL_SIZE_KEY, thumbnailSize),
-    writeStored(THUMBNAIL_DRAG_KEY, thumbnailDragMode)
-  ]);
-
-  settingsDialog?.close("ok");
-  renderSnapshot();
-}
-
 async function scanForFilesystemChanges() {
   if (pollBusy || document.hidden || settingsDialog?.open || !currentDirectory()) return;
   pollBusy = true;
+
   try {
     const next = await enumerateCurrentDirectory();
     const signature = snapshotSignature(next);
     if (signature === directorySignature) return;
 
-    const previous = new Set(directorySnapshot.map((item) => `${item.handle.kind}:${item.name}`));
+    const previous = new Set(
+      directorySnapshot.map((item) => `${item.handle.kind}:${item.name}`)
+    );
     const addedFiles = next
       .filter((item) => item.handle.kind === "file" && !previous.has(`file:${item.name}`))
       .map((item) => item.name);
+
     if (addedFiles.length) saveRecent(addedFiles);
 
     directorySnapshot = next;
@@ -784,12 +791,52 @@ async function scanForFilesystemChanges() {
   }
 }
 
-chooseRootButton?.addEventListener("click", () => void chooseRoot());
-settingsButton?.addEventListener("click", () => {
-  syncSettingsForm();
-  void refreshStorageLabels();
-  settingsDialog?.showModal();
-});
+async function loadVisibilitySettings() {
+  const [
+    storedImages,
+    storedVideos,
+    storedOther,
+    storedDirectories,
+    legacyView
+  ] = await Promise.all([
+    readStored(SHOW_IMAGES_KEY),
+    readStored(SHOW_VIDEOS_KEY),
+    readStored(SHOW_OTHER_FILES_KEY),
+    readStored(SHOW_DIRECTORIES_KEY),
+    readStored(LEGACY_VIEW_MODE_KEY)
+  ]);
+
+  const hasNewVisibility = [
+    storedImages,
+    storedVideos,
+    storedOther,
+    storedDirectories
+  ].some((value) => typeof value === "boolean");
+
+  if (!hasNewVisibility && legacyView === "images") {
+    showImages = true;
+    showVideos = false;
+    showOtherFiles = false;
+    showDirectories = false;
+    await Promise.all([
+      writeStored(SHOW_IMAGES_KEY, showImages),
+      writeStored(SHOW_VIDEOS_KEY, showVideos),
+      writeStored(SHOW_OTHER_FILES_KEY, showOtherFiles),
+      writeStored(SHOW_DIRECTORIES_KEY, showDirectories),
+      writeStored(LEGACY_VIEW_MODE_KEY, "all")
+    ]);
+    return;
+  }
+
+  showImages = storedImages !== false;
+  showVideos = storedVideos !== false;
+  showOtherFiles = storedOther !== false;
+  showDirectories = storedDirectories !== false;
+
+  if (legacyView !== "all") {
+    await writeStored(LEGACY_VIEW_MODE_KEY, "all");
+  }
+}
 
 backButton?.addEventListener("click", async () => {
   if (!pathHandles.length) return;
@@ -828,7 +875,7 @@ pagePrevButton?.addEventListener("click", () => {
 pageNextButton?.addEventListener("click", () => {
   if (listMode !== "paged") return;
   const { files } = filteredSnapshot();
-  const pageCount = Math.max(1, Math.ceil(files.length / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(files.length / filesPerPage));
   if (pageIndex >= pageCount - 1) return;
   pageIndex += 1;
   renderSnapshot();
@@ -836,23 +883,14 @@ pageNextButton?.addEventListener("click", () => {
 });
 
 thumbnailSizeInput?.addEventListener("input", () => {
-  if (thumbnailSizeValue) thumbnailSizeValue.textContent = `${clampThumbnailSize(thumbnailSizeInput.value)}px`;
+  if (thumbnailSizeValue) {
+    thumbnailSizeValue.textContent = `${clampThumbnailSize(thumbnailSizeInput.value)}px`;
+  }
 });
 
-settingsCancel?.addEventListener("click", cancelSettings);
-settingsCancelX?.addEventListener("click", cancelSettings);
-settingsDialog?.addEventListener("close", syncSettingsForm);
-settingsForm?.addEventListener("submit", (event) => {
-  event.preventDefault();
-  if (settingsOk) settingsOk.disabled = true;
-  void applySettingsFromForm()
-    .catch((error) => {
-      console.error("Could not save FileChute settings", error);
-      setStatus("Could not save FileChute settings.", true);
-    })
-    .finally(() => {
-      if (settingsOk) settingsOk.disabled = false;
-    });
+settingsButton?.addEventListener("click", () => {
+  void refreshStorageLabels();
+  settingsDialog?.showModal();
 });
 
 metadataLocationButton?.addEventListener("click", async () => {
@@ -863,7 +901,14 @@ metadataLocationButton?.addEventListener("click", async () => {
     await refreshStorageLabels();
     setStatus(`Metadata will also be saved in ${handle.name}.`);
   } catch (error) {
-    if (error?.name !== "AbortError") setStatus("Could not choose metadata folder.", true);
+    if (error?.name !== "AbortError") {
+      console.error("Could not choose FileChute metadata folder", {
+        name: error?.name,
+        message: error?.message,
+        error
+      });
+      setStatus("Could not choose metadata folder.", true);
+    }
   }
 });
 
@@ -875,7 +920,14 @@ thumbnailLocationButton?.addEventListener("click", async () => {
     await refreshStorageLabels();
     setStatus(`Generated thumbnails will also be saved in ${handle.name}.`);
   } catch (error) {
-    if (error?.name !== "AbortError") setStatus("Could not choose thumbnail folder.", true);
+    if (error?.name !== "AbortError") {
+      console.error("Could not choose FileChute thumbnail folder", {
+        name: error?.name,
+        message: error?.message,
+        error
+      });
+      setStatus("Could not choose thumbnail folder.", true);
+    }
   }
 });
 
@@ -884,7 +936,9 @@ window.addEventListener("filechute:filesystem-changed", () => {
 });
 
 document.addEventListener("dragend", () => {
-  document.querySelectorAll(".entry.dragging").forEach((row) => row.classList.remove("dragging"));
+  document.querySelectorAll(".entry.dragging").forEach(
+    (row) => row.classList.remove("dragging")
+  );
   document.documentElement.style.cursor = "";
   document.body.style.cursor = "";
 }, true);
@@ -892,14 +946,23 @@ document.addEventListener("dragend", () => {
 async function initialize() {
   showThumbnails = (await readStored(THUMBNAILS_KEY)) !== false;
   videoThumbnails = (await readStored(VIDEO_THUMBNAILS_KEY)) !== false;
-  thumbnailSize = clampThumbnailSize((await readStored(THUMBNAIL_SIZE_KEY)) ?? DEFAULT_THUMBNAIL_SIZE);
-  thumbnailDragMode = (await readStored(THUMBNAIL_DRAG_KEY)) === "thumbnail" ? "thumbnail" : "original";
+  thumbnailSize = clampThumbnailSize(
+    (await readStored(THUMBNAIL_SIZE_KEY)) ?? DEFAULT_THUMBNAIL_SIZE
+  );
+  thumbnailDragMode = (await readStored(THUMBNAIL_DRAG_KEY)) === "thumbnail"
+    ? "thumbnail"
+    : "original";
   listMode = (await readStored(LIST_MODE_KEY)) === "all" ? "all" : "paged";
-  viewMode = (await readStored(VIEW_MODE_KEY)) === "images" ? "images" : "all";
-  directoryPosition = (await readStored(DIRECTORY_POSITION_KEY)) === "bottom" ? "bottom" : "top";
+  filesPerPage = clampFilesPerPage(
+    (await readStored(FILES_PER_PAGE_KEY)) ?? DEFAULT_FILES_PER_PAGE
+  );
+  directoryPosition = (await readStored(DIRECTORY_POSITION_KEY)) === "bottom"
+    ? "bottom"
+    : "top";
+
+  await loadVisibilitySettings();
 
   applyThumbnailSize();
-  syncSettingsForm();
   rootHandle = await readStored(ROOT_HANDLE_KEY);
   await restorePathIfNeeded();
   await refreshStorageLabels();
