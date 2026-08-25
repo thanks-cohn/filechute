@@ -56,7 +56,7 @@
       <div class="dialog-heading">
         <div>
           <h2>FileChute settings</h2>
-          <p>Choose what FileChute shows, how much it loads, and where optional thumbnail copies live. Changes apply only when you press OK.</p>
+          <p>Choose what FileChute shows, how much it loads, and whether support data stays browser-only or is mirrored automatically to a remembered local folder.</p>
         </div>
         <button id="settings-cancel-x" class="dialog-close" type="button" aria-label="Cancel settings">×</button>
       </div>
@@ -168,36 +168,26 @@
 
       <section class="settings-section">
         <h3>Durable storage</h3>
-        <p class="settings-note">Browser-managed thumbnail storage is the default. You may also choose a normal local folder so generated WebP thumbnails survive removing or reinstalling FileChute.</p>
-        <button id="metadata-location" class="storage-button" type="button">Metadata: browser only</button>
-        <button id="thumbnail-location" class="storage-button" type="button">Thumbs: browser only</button>
+        <p class="settings-note">Browser-only is the default. Turn on a local mirror once and FileChute remembers that folder and writes there automatically. Turn it off again to return to browser-only storage. There is no per-item Save step.</p>
+
+        <label class="setting-row checkbox-row">
+          <span>Save metadata to a local folder</span>
+          <input id="metadata-local-enabled" type="checkbox">
+        </label>
+        <button id="metadata-local-location" class="storage-button" type="button" disabled>Metadata: browser only</button>
+
+        <label class="setting-row checkbox-row">
+          <span>Save thumbnails to a local folder</span>
+          <input id="thumbnail-local-enabled" type="checkbox">
+        </label>
+        <button id="thumbnail-local-location" class="storage-button" type="button" disabled>Thumbs: browser only</button>
+
+        <small class="settings-note">If Chromium ever drops filesystem permission, FileChute keeps the remembered folder handle and asks only to reconnect that same folder rather than making you choose it again.</small>
       </section>
 
       <div class="dialog-actions">
         <button id="settings-cancel" type="button">Cancel</button>
         <button id="settings-ok" class="primary" type="submit">OK</button>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog id="metadata-dialog">
-    <form method="dialog" class="dialog-card">
-      <h2>Keep metadata outside Chromium too?</h2>
-      <p>FileChute always keeps a fast browser-local copy. You can also choose a normal folder for a durable <code>filechute-metadata.json</code> mirror, so provenance and future tags survive browser-data cleanup.</p>
-      <div class="dialog-actions">
-        <button id="metadata-browser-only" value="browser-only" type="submit">Browser only</button>
-        <button id="metadata-choose" class="primary" value="choose" type="button">Choose metadata folder</button>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog id="thumbnail-dialog">
-    <form method="dialog" class="dialog-card">
-      <h2>Keep thumbnails outside Chromium too?</h2>
-      <p>Generated image and video thumbnails are cached in the browser for speed. FileChute can also mirror the tiny WebP previews into a folder you choose so they survive browser cache, extension-data cleanup, or removing FileChute.</p>
-      <div class="dialog-actions">
-        <button id="thumbnail-browser-only" value="browser-only" type="submit">Browser only</button>
-        <button id="thumbnail-choose" class="primary" value="choose" type="button">Choose thumbnail folder</button>
       </div>
     </form>
   </dialog>
@@ -210,6 +200,7 @@
   <script type="module" src="sidepanel.js"></script>
   <script type="module" src="directory-drag.js"></script>
   <script type="module" src="settings-draft.js"></script>
+  <script type="module" src="durable-storage-settings.js"></script>
   <script type="module" src="first-run.js"></script>
 </body>
 </html>
