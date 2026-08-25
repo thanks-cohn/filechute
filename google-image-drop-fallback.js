@@ -119,6 +119,13 @@ function candidateName(url, title, type) {
   return ensureExtension(pathname || title || "google-image", type);
 }
 
+function bytesFromBase64(value) {
+  const binary = atob(String(value || ""));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
 function directFileFromTransfer(transfer) {
   for (const file of [...(transfer?.files || [])]) {
     if (file instanceof File && file.size > 0 && String(file.type || "").startsWith("image/")) return file;
@@ -147,7 +154,34 @@ function originPatterns(urls) {
   return result;
 }
 
-async function fileFromCandidate(value, title) {
+async function activeSourceTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
+  return tab?.id ? tab : null;
+}
+
+async function pageBridgeFile(value, title) {
+  const tab = await activeSourceTab();
+  if (!tab?.id) return null;
+  try {
+    const response = await chrome.tabs.sendMessage(tab.id, {
+      type: "filechute-read-page-resource-v1",
+      url: value,
+      suggestedName: title || "google-image"
+    });
+    if (!response?.ok || !response?.base64) return null;
+    const type = String(response.type || "").toLowerCase();
+    if (!type.startsWith("image/")) return null;
+    const name = ensureExtension(response.name || title || "google-image", type);
+    return {
+      file: new File([bytesFromBase64(response.base64)], name, { type, lastModified: Date.now() }),
+      sourceUrl: /^https?:/i.test(value) ? value : null
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function extensionSideFile(value, title) {
   if (/^data:image\//i.test(value)) {
     const response = await fetch(value);
     const blob = await response.blob();
@@ -163,6 +197,12 @@ async function fileFromCandidate(value, title) {
   const blob = await response.blob();
   const name = candidateName(value, title, type || blob.type);
   return { file: new File([blob], name, { type: type || blob.type, lastModified: Date.now() }), sourceUrl: value };
+}
+
+async function fileFromCandidate(value, title) {
+  const fromPage = await pageBridgeFile(value, title);
+  if (fromPage?.file) return fromPage;
+  return extensionSideFile(value, title);
 }
 
 async function saveFile(file, sourceUrl, targetPathNames) {
@@ -216,12 +256,11 @@ document.addEventListener("drop", (event) => {
   const directFile = directFileFromTransfer(transfer);
   const origins = originPatterns(capture.urls);
 
-  // Ask for exact candidate hosts while the physical drop still carries user
-  // activation. If the user declines, CORS-friendly Google thumbnails can
-  // still succeed through the ordinary fetch path.
+  // Do not ask a new permission question in the middle of a drag. Existing
+  // host access is reused when present; otherwise prefer the Google page bridge.
   let permissionPromise = Promise.resolve(false);
   if (origins.length) {
-    try { permissionPromise = chrome.permissions.request({ origins }); } catch {}
+    try { permissionPromise = chrome.permissions.contains({ origins }); } catch {}
   }
 
   void Promise.resolve(permissionPromise)
@@ -244,7 +283,7 @@ document.addEventListener("drop", (event) => {
       }
 
       console.warn("FileChute exhausted captured Google Images sources", failures);
-      throw new Error("Google supplied a drag shell but none of its captured image sources could be read. Try the visible thumbnail again after allowing the image-host permission prompt.");
+      throw new Error("Google supplied an image drag shell but none of its captured image sources could be read. Refresh the Google Images tab and try the visible thumbnail again.");
     })
     .then((message) => preservePathAndReload(message))
     .catch((error) => {
