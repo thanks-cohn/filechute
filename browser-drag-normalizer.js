@@ -1,3 +1,4 @@
+import "./yandex-image-drop-fallback.js";
 import "./chatgpt-image-drop-fallback.js";
 import "./google-image-drop-fallback.js";
 
