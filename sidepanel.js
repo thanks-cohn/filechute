@@ -3,7 +3,6 @@ import { makeFileChutePayload, writeFileChuteDrag } from "./interop.js";
 import {
   chooseExternalMetadataDirectory,
   externalMetadataStatus,
-  mergeMetadata,
   metadataFor
 } from "./metadata-store.js";
 import {
@@ -19,20 +18,24 @@ const THUMBNAILS_KEY = "filechute-show-thumbnails";
 const VIDEO_THUMBNAILS_KEY = "filechute-video-thumbnails";
 const THUMBNAIL_SIZE_KEY = "filechute-thumbnail-size";
 const THUMBNAIL_DRAG_KEY = "filechute-thumbnail-drag-mode";
+const LIST_MODE_KEY = "filechute-directory-list-mode";
 const METADATA_CHOICE_KEY = "filechute-metadata-storage-choice";
 const THUMBNAIL_CHOICE_KEY = "filechute-thumbnail-storage-choice";
-const CHUTE_DRAG_TYPE = "application/x-chute-item";
-const CHUTE_DRAG_PREFIX = "CHUTE_ITEM:";
-const CHUTE_ORIGIN = "http://127.0.0.1:17891/*";
+const RECENT_KEY = "filechute-recent-drops-v1";
 const DEFAULT_THUMBNAIL_SIZE = 48;
 const MIN_THUMBNAIL_SIZE = 24;
 const MAX_THUMBNAIL_SIZE = 160;
+const PAGE_SIZE = 50;
 
-const chooseRootButton = document.querySelector("#choose-root");
 const settingsButton = document.querySelector("#open-settings");
 const backButton = document.querySelector("#back");
 const homeButton = document.querySelector("#home");
 const breadcrumbs = document.querySelector("#breadcrumbs");
+const pageControls = document.querySelector("#page-controls");
+const pagePrevButton = document.querySelector("#page-prev");
+const pageNextButton = document.querySelector("#page-next");
+const pageLabel = document.querySelector("#page-label");
+const listModeInput = document.querySelector("#directory-list-mode");
 const showThumbnailsInput = document.querySelector("#show-thumbnails");
 const videoThumbnailsInput = document.querySelector("#video-thumbnails");
 const thumbnailSizeInput = document.querySelector("#thumbnail-size");
@@ -58,10 +61,13 @@ let showThumbnails = true;
 let videoThumbnails = true;
 let thumbnailSize = DEFAULT_THUMBNAIL_SIZE;
 let thumbnailDragMode = "original";
+let listMode = "paged";
+let pageIndex = 0;
 let renderGeneration = 0;
 const previewUrls = new Set();
 
 function setStatus(message, error = false) {
+  if (!statusElement) return;
   statusElement.textContent = message;
   statusElement.classList.toggle("error", error);
 }
@@ -91,25 +97,10 @@ function childLocation(name) {
   return [currentLocation(), name].filter(Boolean).join("/");
 }
 
-function targetLocation(targetNames, name) {
-  if (!rootHandle) return name;
-  return [rootHandle.name, ...targetNames, name].join("/");
-}
-
 async function queryPermission(handle, mode = "readwrite") {
   if (!handle) return false;
   try {
     return (await handle.queryPermission({ mode })) === "granted";
-  } catch {
-    return false;
-  }
-}
-
-async function requestPermission(handle, mode = "readwrite") {
-  if (!handle) return false;
-  if (await queryPermission(handle, mode)) return true;
-  try {
-    return (await handle.requestPermission({ mode })) === "granted";
   } catch {
     return false;
   }
@@ -246,30 +237,39 @@ function waitForDialogClose(dialog) {
 async function refreshStorageLabels() {
   const metadata = await externalMetadataStatus();
   const thumbs = await externalThumbnailStatus();
-  metadataLocationButton.textContent = metadata.configured
-    ? `Metadata: ${metadata.name}${metadata.available ? "" : " · reconnect"}`
-    : "Metadata: browser only";
-  thumbnailLocationButton.textContent = thumbs.configured
-    ? `Thumbs: ${thumbs.name}${thumbs.available ? "" : " · reconnect"}`
-    : "Thumbs: browser only";
+  if (metadataLocationButton) {
+    metadataLocationButton.textContent = metadata.configured
+      ? `Metadata: ${metadata.name}${metadata.available ? "" : " · reconnect"}`
+      : "Metadata: browser only";
+  }
+  if (thumbnailLocationButton) {
+    thumbnailLocationButton.textContent = thumbs.configured
+      ? `Thumbs: ${thumbs.name}${thumbs.available ? "" : " · reconnect"}`
+      : "Thumbs: browser only";
+  }
 }
 
 async function ensureDurabilityPrompts() {
-  if (!(await readStored(METADATA_CHOICE_KEY))) {
+  if (metadataDialog && !(await readStored(METADATA_CHOICE_KEY))) {
     metadataDialog.showModal();
     await waitForDialogClose(metadataDialog);
   }
-  if (!(await readStored(THUMBNAIL_CHOICE_KEY))) {
+  if (thumbnailDialog && !(await readStored(THUMBNAIL_CHOICE_KEY))) {
     thumbnailDialog.showModal();
     await waitForDialogClose(thumbnailDialog);
   }
   await refreshStorageLabels();
 }
 
+function resetPage() {
+  pageIndex = 0;
+}
+
 async function navigateInto(name, handle) {
   if (handle.kind !== "directory") return;
   pathHandles.push(handle);
   pathNames.push(name);
+  resetPage();
   await renderDirectory();
 }
 
@@ -306,7 +306,9 @@ function buildPayload({ handle, name, file, metadata, relativePath, representati
     name: representation === "thumbnail" ? thumbnailFileName(name) : name,
     originalName: name,
     representation,
-    mime: representation === "thumbnail" ? "image/webp" : (file?.type || ""),
+    mime: handle.kind === "directory"
+      ? "inode/directory"
+      : (representation === "thumbnail" ? "image/webp" : (file?.type || "")),
     relativePath,
     sourceUrl: metadata?.sourceUrl || null,
     parentPageUrl: metadata?.parentPageUrl || null,
@@ -320,7 +322,7 @@ function startDrag({ event, row, preview, payload, file }) {
   if (!transfer) return;
   row.classList.add("dragging");
   writeFileChuteDrag(transfer, payload, file);
-  if (!preview.hidden) {
+  if (preview && !preview.hidden) {
     try { transfer.setDragImage(preview, thumbnailSize / 2, thumbnailSize / 2); } catch {}
   }
 }
@@ -347,8 +349,9 @@ async function renderEntry(name, handle, generation) {
 
   if (handle.kind === "directory") {
     row.classList.add("directory");
+    row.dataset.filechuteDirectory = "true";
     fallback.textContent = "📁";
-    nameElement.title = "Open folder · drag to move the directory into a FileChute-aware target";
+    nameElement.title = "Click to open · drag to FrameChute as a gallery";
     nameElement.addEventListener("click", () => navigateInto(name, handle));
   } else {
     try {
@@ -377,12 +380,14 @@ async function renderEntry(name, handle, generation) {
 
   nameElement.draggable = true;
   nameElement.title = handle.kind === "directory"
-    ? "Click to open · drag to send this directory"
+    ? "Click to open · drag to FrameChute as a gallery"
     : "Drag the name to send the full original file";
   nameElement.addEventListener("dragstart", dragOriginal);
 
   previewWrap.draggable = true;
-  previewWrap.title = "Drag preview";
+  previewWrap.title = handle.kind === "directory"
+    ? "Drag this folder to FrameChute as a gallery"
+    : "Drag preview";
   previewWrap.addEventListener("dragstart", (event) => {
     if (thumbnailDragMode === "thumbnail" && thumbnailBlob && handle.kind === "file") {
       const thumbFile = new File([thumbnailBlob], thumbnailFileName(name), {
@@ -399,22 +404,6 @@ async function renderEntry(name, handle, generation) {
   const finishDrag = () => row.classList.remove("dragging");
   nameElement.addEventListener("dragend", finishDrag);
   previewWrap.addEventListener("dragend", finishDrag);
-
-  if (handle.kind === "directory") {
-    row.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      row.classList.add("drop-target");
-      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-    });
-    row.addEventListener("dragleave", () => row.classList.remove("drop-target"));
-    row.addEventListener("drop", async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      row.classList.remove("drop-target");
-      await receiveDrop(event.dataTransfer, handle, [...pathNames, name]);
-    });
-  }
 
   entriesElement.append(row);
 
@@ -433,6 +422,50 @@ async function renderEntry(name, handle, generation) {
   }
 }
 
+function recentNames() {
+  try {
+    const names = JSON.parse(sessionStorage.getItem(RECENT_KEY) || "[]");
+    return Array.isArray(names) ? names.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function sortFiles(files) {
+  const recent = recentNames();
+  const recentIndex = new Map(recent.map((name, index) => [name, index]));
+  return files.sort((a, b) => {
+    const ai = recentIndex.get(a.name);
+    const bi = recentIndex.get(b.name);
+    const ar = Number.isInteger(ai);
+    const br = Number.isInteger(bi);
+    if (ar !== br) return ar ? -1 : 1;
+    if (ar && br && ai !== bi) return ai - bi;
+    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+  });
+}
+
+function updatePageControls(totalFiles) {
+  if (!pageControls || !pagePrevButton || !pageNextButton || !pageLabel) return;
+
+  if (listMode === "all") {
+    pageControls.hidden = true;
+    return;
+  }
+
+  const pageCount = Math.max(1, Math.ceil(totalFiles / PAGE_SIZE));
+  pageIndex = Math.min(Math.max(0, pageIndex), pageCount - 1);
+  const first = totalFiles ? pageIndex * PAGE_SIZE + 1 : 0;
+  const last = Math.min(totalFiles, (pageIndex + 1) * PAGE_SIZE);
+
+  pageControls.hidden = false;
+  pagePrevButton.disabled = pageIndex <= 0;
+  pageNextButton.disabled = pageIndex >= pageCount - 1;
+  pageLabel.textContent = totalFiles
+    ? `${pageIndex + 1} / ${pageCount} · files ${first}–${last} of ${totalFiles}`
+    : "1 / 1 · no files";
+}
+
 async function renderDirectory() {
   const directory = currentDirectory();
   const generation = ++renderGeneration;
@@ -443,177 +476,79 @@ async function renderDirectory() {
   homeButton.disabled = pathHandles.length === 0;
 
   if (!directory) {
+    if (pageControls) pageControls.hidden = true;
     entriesElement.innerHTML = '<div class="empty">Choose a folder and FileChute will explore it here.</div>';
     setStatus("Choose a local folder to begin.");
     return;
   }
 
   if (!(await queryPermission(directory))) {
-    entriesElement.innerHTML = '<div class="empty">FileChute remembers this folder, but Chromium needs permission again. Use Choose folder to reconnect it.</div>';
+    if (pageControls) pageControls.hidden = true;
+    entriesElement.innerHTML = '<div class="empty">FileChute remembers this folder, but Chromium needs permission again. Use Reconnect to restore it.</div>';
     setStatus("Folder permission needs to be restored.", true);
     return;
   }
 
   setStatus(`Reading ${currentLocation()}…`);
-  try {
-    const items = [];
-    for await (const [name, handle] of directory.entries()) items.push({ name, handle });
-    items.sort((a, b) => {
-      if (a.handle.kind !== b.handle.kind) return a.handle.kind === "directory" ? -1 : 1;
-      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
-    });
 
-    if (!items.length) {
+  try {
+    const directories = [];
+    const files = [];
+    for await (const [name, handle] of directory.entries()) {
+      if (handle.kind === "directory") directories.push({ name, handle });
+      else files.push({ name, handle });
+    }
+
+    directories.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+    sortFiles(files);
+
+    if (!directories.length && !files.length) {
+      updatePageControls(0);
       entriesElement.innerHTML = '<div class="empty">This folder is empty.</div>';
       setStatus(`${currentLocation()} · empty`);
       return;
     }
 
-    for (const item of items) await renderEntry(item.name, item.handle, generation);
-    if (generation === renderGeneration) setStatus(`${items.length} item${items.length === 1 ? "" : "s"} · ${currentLocation()}`);
+    // Folders are intentionally outside pagination. They are always rendered
+    // first so navigation and FileChute → FrameChute gallery drags remain
+    // available on every file page.
+    for (const item of directories) {
+      await renderEntry(item.name, item.handle, generation);
+      if (generation !== renderGeneration) return;
+    }
+
+    updatePageControls(files.length);
+    const visibleFiles = listMode === "all"
+      ? files
+      : files.slice(pageIndex * PAGE_SIZE, pageIndex * PAGE_SIZE + PAGE_SIZE);
+
+    for (const item of visibleFiles) {
+      await renderEntry(item.name, item.handle, generation);
+      if (generation !== renderGeneration) return;
+    }
+
+    if (generation === renderGeneration) {
+      const folderText = `${directories.length} folder${directories.length === 1 ? "" : "s"}`;
+      const fileText = `${files.length} file${files.length === 1 ? "" : "s"}`;
+      const modeText = listMode === "all"
+        ? "all loaded"
+        : `${visibleFiles.length} shown · page ${pageIndex + 1}/${Math.max(1, Math.ceil(files.length / PAGE_SIZE))}`;
+      setStatus(`${folderText} · ${fileText} · ${modeText} · ${currentLocation()}`);
+    }
   } catch (error) {
     console.error(error);
     setStatus("Could not read this folder.", true);
   }
 }
 
-async function chooseRoot() {
-  try {
-    const handle = await window.showDirectoryPicker({ mode: "readwrite" });
-    if (!(await requestPermission(handle))) return;
-    rootHandle = handle;
-    pathHandles = [];
-    pathNames = [];
-    await writeStored(ROOT_HANDLE_KEY, handle);
-    await renderDirectory();
-    await ensureDurabilityPrompts();
-  } catch (error) {
-    if (error?.name !== "AbortError") {
-      console.error(error);
-      setStatus("Could not choose that folder.", true);
-    }
-  }
-}
-
-async function destinationName(directory, requested) {
-  const name = String(requested || "dropped-file").replace(/[\\/\r\n]+/g, "_") || "dropped-file";
-  const dot = name.lastIndexOf(".");
-  const stem = dot > 0 ? name.slice(0, dot) : name;
-  const ext = dot > 0 ? name.slice(dot) : "";
-
-  for (let attempt = 0; attempt < 1000; attempt += 1) {
-    const candidate = attempt === 0 ? name : `${stem} (${attempt + 1})${ext}`;
-    try {
-      await directory.getFileHandle(candidate);
-    } catch (error) {
-      if (error?.name === "NotFoundError") return candidate;
-      if (error?.name === "TypeMismatchError") continue;
-      throw error;
-    }
-  }
-  return `${stem}-${Date.now()}${ext}`;
-}
-
-async function writeDroppedFile(directory, targetNames, file, preferredName = file.name, provenance = null) {
-  const name = await destinationName(directory, preferredName);
-  const handle = await directory.getFileHandle(name, { create: true });
-  const writable = await handle.createWritable();
-  await writable.write(file);
-  await writable.close();
-
-  const relativePath = targetLocation(targetNames, name);
-  if (provenance?.sourceUrl || provenance?.parentPageUrl) {
-    await mergeMetadata(relativePath, {
-      sourceUrl: provenance.sourceUrl || null,
-      parentPageUrl: provenance.parentPageUrl || null
-    });
-  }
-  return { name, relativePath };
-}
-
-function decodeChuteToken(value) {
-  const text = String(value || "");
-  if (!text.startsWith(CHUTE_DRAG_PREFIX)) return null;
-  try {
-    const item = JSON.parse(decodeURIComponent(text.slice(CHUTE_DRAG_PREFIX.length)));
-    if (!item?.id || !item?.name) return null;
-    return {
-      id: String(item.id),
-      name: String(item.name),
-      mime: String(item.mime || "application/octet-stream"),
-      sourceUrl: item.sourceUrl || null,
-      parentPageUrl: item.parentPageUrl || null
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function ensureChuteBridgePermission() {
-  if (await chrome.permissions.contains({ origins: [CHUTE_ORIGIN] })) return true;
-  try {
-    return await chrome.permissions.request({ origins: [CHUTE_ORIGIN] });
-  } catch {
-    return false;
-  }
-}
-
-async function receiveChuteItem(item, directory, targetNames) {
-  if (!(await ensureChuteBridgePermission())) {
-    setStatus("FileChute needs localhost permission to receive this Chute item.", true);
-    return false;
-  }
-
-  const response = await fetch(`http://127.0.0.1:17891/api/files/${encodeURIComponent(item.id)}`, { cache: "no-store" });
-  if (!response.ok) throw new Error(`Chute returned ${response.status}`);
-  const blob = await response.blob();
-  const file = new File([blob], item.name, { type: item.mime || blob.type, lastModified: Date.now() });
-  const written = await writeDroppedFile(directory, targetNames, file, item.name, item);
-  setStatus(`Copied ${written.name} from Chute.`);
-  return true;
-}
-
-async function receiveDrop(transfer, directory = currentDirectory(), targetNames = pathNames) {
-  if (!transfer || !directory) return;
-  if (!(await queryPermission(directory))) {
-    setStatus("Folder permission is not available.", true);
-    return;
-  }
-
-  try {
-    const files = [...transfer.files];
-    if (files.length) {
-      let copied = 0;
-      for (const file of files) {
-        await writeDroppedFile(directory, targetNames, file);
-        copied += 1;
-      }
-      setStatus(`Copied ${copied} file${copied === 1 ? "" : "s"} into ${targetLocation(targetNames, "").replace(/\/$/, "")}.`);
-      await renderDirectory();
-      return;
-    }
-
-    const chuteItem = decodeChuteToken(transfer.getData(CHUTE_DRAG_TYPE));
-    if (chuteItem) {
-      if (await receiveChuteItem(chuteItem, directory, targetNames)) await renderDirectory();
-      return;
-    }
-
-    setStatus("That drag does not contain transferable file bytes yet.", true);
-  } catch (error) {
-    console.error(error);
-    setStatus(error.message || "Could not receive that drop.", true);
-  }
-}
-
-metadataBrowserOnly.addEventListener("click", async (event) => {
+metadataBrowserOnly?.addEventListener("click", async (event) => {
   event.preventDefault();
   await writeStored(METADATA_CHOICE_KEY, "browser");
   metadataDialog.close("browser");
   await refreshStorageLabels();
 });
 
-metadataChoose.addEventListener("click", async () => {
+metadataChoose?.addEventListener("click", async () => {
   try {
     const handle = await chooseExternalMetadataDirectory();
     if (!handle) return;
@@ -625,14 +560,14 @@ metadataChoose.addEventListener("click", async () => {
   }
 });
 
-thumbnailBrowserOnly.addEventListener("click", async (event) => {
+thumbnailBrowserOnly?.addEventListener("click", async (event) => {
   event.preventDefault();
   await writeStored(THUMBNAIL_CHOICE_KEY, "browser");
   thumbnailDialog.close("browser");
   await refreshStorageLabels();
 });
 
-thumbnailChoose.addEventListener("click", async () => {
+thumbnailChoose?.addEventListener("click", async () => {
   try {
     const handle = await chooseExternalThumbnailDirectory();
     if (!handle) return;
@@ -645,7 +580,7 @@ thumbnailChoose.addEventListener("click", async () => {
   }
 });
 
-metadataLocationButton.addEventListener("click", async () => {
+metadataLocationButton?.addEventListener("click", async () => {
   try {
     const handle = await chooseExternalMetadataDirectory();
     if (!handle) return;
@@ -657,7 +592,7 @@ metadataLocationButton.addEventListener("click", async () => {
   }
 });
 
-thumbnailLocationButton.addEventListener("click", async () => {
+thumbnailLocationButton?.addEventListener("click", async () => {
   try {
     const handle = await chooseExternalThumbnailDirectory();
     if (!handle) return;
@@ -670,45 +605,73 @@ thumbnailLocationButton.addEventListener("click", async () => {
   }
 });
 
-settingsButton.addEventListener("click", () => settingsDialog.showModal());
-chooseRootButton.addEventListener("click", chooseRoot);
-backButton.addEventListener("click", async () => {
+settingsButton?.addEventListener("click", () => settingsDialog.showModal());
+
+backButton?.addEventListener("click", async () => {
   if (!pathHandles.length) return;
   pathHandles.pop();
   pathNames.pop();
-  await renderDirectory();
-});
-homeButton.addEventListener("click", async () => {
-  pathHandles = [];
-  pathNames = [];
+  resetPage();
   await renderDirectory();
 });
 
-showThumbnailsInput.addEventListener("change", async () => {
+homeButton?.addEventListener("click", async () => {
+  pathHandles = [];
+  pathNames = [];
+  resetPage();
+  await renderDirectory();
+});
+
+pagePrevButton?.addEventListener("click", async () => {
+  if (listMode !== "paged" || pageIndex <= 0) return;
+  pageIndex -= 1;
+  await renderDirectory();
+  window.scrollTo({ top: 0, behavior: "instant" });
+});
+
+pageNextButton?.addEventListener("click", async () => {
+  if (listMode !== "paged") return;
+  pageIndex += 1;
+  await renderDirectory();
+  window.scrollTo({ top: 0, behavior: "instant" });
+});
+
+listModeInput?.addEventListener("change", async () => {
+  listMode = listModeInput.value === "all" ? "all" : "paged";
+  resetPage();
+  await writeStored(LIST_MODE_KEY, listMode);
+  await renderDirectory();
+  setStatus(listMode === "all"
+    ? "Loading entire directories is enabled. This may use considerably more memory on large image folders."
+    : "Paged listing enabled: folders always visible, files load 50 at a time.");
+});
+
+showThumbnailsInput?.addEventListener("change", async () => {
   showThumbnails = showThumbnailsInput.checked;
   await writeStored(THUMBNAILS_KEY, showThumbnails);
   await renderDirectory();
 });
 
-videoThumbnailsInput.addEventListener("change", async () => {
+videoThumbnailsInput?.addEventListener("change", async () => {
   videoThumbnails = videoThumbnailsInput.checked;
   await writeStored(VIDEO_THUMBNAILS_KEY, videoThumbnails);
   await renderDirectory();
 });
 
-thumbnailSizeInput.addEventListener("input", () => {
+thumbnailSizeInput?.addEventListener("input", () => {
   const next = clampThumbnailSize(thumbnailSizeInput.value);
   thumbnailSizeValue.textContent = `${next}px`;
   document.documentElement.style.setProperty("--thumbnail-size", `${next}px`);
 });
-thumbnailSizeInput.addEventListener("change", async () => {
+
+thumbnailSizeInput?.addEventListener("change", async () => {
   thumbnailSize = clampThumbnailSize(thumbnailSizeInput.value);
   applyThumbnailSize();
   await writeStored(THUMBNAIL_SIZE_KEY, thumbnailSize);
   await renderDirectory();
 });
 
-thumbnailDragModeInput.addEventListener("change", async () => {
+thumbnailDragModeInput?.addEventListener("change", async () => {
   thumbnailDragMode = thumbnailDragModeInput.value === "thumbnail" ? "thumbnail" : "original";
   await writeStored(THUMBNAIL_DRAG_KEY, thumbnailDragMode);
   setStatus(thumbnailDragMode === "thumbnail"
@@ -716,33 +679,17 @@ thumbnailDragModeInput.addEventListener("change", async () => {
     : "Thumbnail and filename drags both transfer the full original file.");
 });
 
-document.addEventListener("dragover", (event) => {
-  if (!currentDirectory()) return;
-  event.preventDefault();
-  document.body.classList.add("filechute-drop-active");
-  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-});
-
-document.addEventListener("dragleave", (event) => {
-  if (event.relatedTarget) return;
-  document.body.classList.remove("filechute-drop-active");
-});
-
-document.addEventListener("drop", async (event) => {
-  event.preventDefault();
-  document.body.classList.remove("filechute-drop-active");
-  await receiveDrop(event.dataTransfer);
-});
-
 async function initialize() {
   showThumbnails = (await readStored(THUMBNAILS_KEY)) !== false;
   videoThumbnails = (await readStored(VIDEO_THUMBNAILS_KEY)) !== false;
   thumbnailSize = clampThumbnailSize((await readStored(THUMBNAIL_SIZE_KEY)) ?? DEFAULT_THUMBNAIL_SIZE);
   thumbnailDragMode = (await readStored(THUMBNAIL_DRAG_KEY)) === "thumbnail" ? "thumbnail" : "original";
+  listMode = (await readStored(LIST_MODE_KEY)) === "all" ? "all" : "paged";
 
-  showThumbnailsInput.checked = showThumbnails;
-  videoThumbnailsInput.checked = videoThumbnails;
-  thumbnailDragModeInput.value = thumbnailDragMode;
+  if (showThumbnailsInput) showThumbnailsInput.checked = showThumbnails;
+  if (videoThumbnailsInput) videoThumbnailsInput.checked = videoThumbnails;
+  if (thumbnailDragModeInput) thumbnailDragModeInput.value = thumbnailDragMode;
+  if (listModeInput) listModeInput.value = listMode;
   applyThumbnailSize();
 
   rootHandle = await readStored(ROOT_HANDLE_KEY);
