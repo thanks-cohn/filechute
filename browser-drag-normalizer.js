@@ -144,10 +144,12 @@ document.addEventListener("drop", (event) => {
   event.preventDefault();
   event.stopImmediatePropagation();
 
+  // Browser drops must never trigger a surprise host-permission dialog.
+  // Reuse host access only when the user has already granted it elsewhere.
   const origins = permissionOrigins(clone);
-  let permission = Promise.resolve(true);
+  let permission = Promise.resolve(false);
   if (origins.length) {
-    try { permission = chrome.permissions.request({ origins }); } catch {}
+    try { permission = chrome.permissions.contains({ origins }); } catch {}
   }
 
   void Promise.resolve(permission)
