@@ -1,0 +1,40 @@
+name: Package FileChute vanilla-1
+
+on:
+  push:
+    branches:
+      - packaging/vanilla-1
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out frozen vanilla-1 snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: vanilla-1
+          fetch-depth: 0
+
+      - name: Verify frozen release
+        run: |
+          test "$(git rev-parse HEAD)" = "949f692c80ef79d86c30f6c55851ef98a35f2b7d"
+          grep '"version": "0.1.34"' manifest.json
+
+      - name: Build exact Git archive
+        run: |
+          git archive --format=zip --output="../filechute-vanilla-1-v0.1.34.zip" HEAD
+          cd ..
+          sha256sum filechute-vanilla-1-v0.1.34.zip > filechute-vanilla-1-v0.1.34.sha256
+
+      - name: Upload packaged release
+        uses: actions/upload-artifact@v4
+        with:
+          name: filechute-vanilla-1-v0.1.34-release
+          path: |
+            ../filechute-vanilla-1-v0.1.34.zip
+            ../filechute-vanilla-1-v0.1.34.sha256
+          if-no-files-found: error
+          compression-level: 0
