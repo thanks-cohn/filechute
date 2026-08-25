@@ -2,110 +2,252 @@
 
 **Your files, beside the browser.**
 
-FileChute is a Chromium **left-side file drawer** built for fast local access without turning every file interaction into an upload dialog.
+FileChute is a local-first Chromium file companion built around one simple idea: **move something from the web into the exact folder you want with a drag, instead of detouring through Save As and Downloads.**
 
-Click the FileChute toolbar button and the drawer slides in from the left edge of the current webpage. Because FileChute no longer uses Chromium's native Side Panel, the **Chute Shelf can stay open at the same time on the right**.
+Current release: **v0.1.21**
 
-Choose a local root folder once, browse it from the left drawer, see lightweight recognition thumbnails for images and browser-decodable video, and drag the real underlying file wherever it belongs.
+Current status: **Chrome Web Store release candidate.** The core extension is working and the current milestone is focused on final Store packaging, permission/privacy review, icons, screenshots, and clean-profile smoke testing rather than adding more features.
 
-## The Chute family
+## What FileChute does
 
-FileChute, [Chute](https://github.com/thanks-cohn/chute), and [FrameChute](https://github.com/thanks-cohn/framechute) are designed to work together.
+FileChute opens as a persistent Chromium side panel by default, with an optional floating-window mode in Settings.
 
-```text
-FileChute  = find it
-Chute      = hold it
-FrameChute = arrange it
-```
-
-A normal working layout can be:
+Choose a local root folder, browse its contents beside the browser, and drag real files in either direction:
 
 ```text
-┌──────────────┬──────────────────────────────┬──────────────┐
-│ FileChute    │         current tab          │ Chute Shelf  │
-│ LEFT drawer  │                              │ RIGHT panel  │
-└──────────────┴──────────────────────────────┴──────────────┘
+web image/media
+      ↓
+   FileChute
+      ↓
+local folder
 ```
 
-The shared rule is simple:
+and:
 
-**The thumbnail is only a preview. The original is what moves.**
+```text
+local file
+    ↓
+FileChute
+    ↓
+compatible browser target / Chute / FrameChute
+```
 
-Dragging an image thumbnail moves the full image. Dragging a video first-frame thumbnail moves the full video. PDFs, text, audio, video, images, and ordinary files are exposed as their real `File` objects when Chromium permits it, alongside a versioned FileChute drag payload for richer integrations.
+FileChute is not a cloud drive. It is a browser-facing interface to a directory the user explicitly selects through Chromium's File System Access API.
 
-FileChute can also describe a dragged directory so FrameChute-aware integrations can treat a directory as a directory instead of flattening the gesture into a meaningless preview.
+## Direct browser-to-folder drops
+
+FileChute can save supported browser resources directly into the selected filesystem tree.
+
+The destination follows the physical drop target:
+
+- Drop onto the ordinary FileChute file area → save into the currently open directory.
+- Drop directly onto a visible directory row → save inside that directory.
+
+The file list remains visible while dragging so the target is never hidden behind a giant generic overlay.
+
+### Visual confirmation
+
+Directory targeting is intentionally obvious:
+
+- the directory under the pointer receives a small animated target halo
+- the interface identifies the destination being targeted
+- successful drops produce a brief green acceptance pulse
+- failed drops produce red rejection feedback
+
+The success state survives the immediate directory refresh long enough for the user to see **which folder actually accepted the item**.
+
+## Google Images
+
+FileChute supports direct dragging from Google Images.
+
+Browser image-search drags are not always normal file drags. Chromium may expose a phantom `Files` item or discard useful source metadata while the drag crosses from a webpage into an extension surface.
+
+FileChute therefore captures useful image information at the source page before the drag leaves Google and can recover image candidates from data such as:
+
+- `currentSrc`
+- `src`
+- `srcset`
+- lazy-load/data attributes
+- surrounding result links
+- nested image URLs
+
+The result can then be saved directly into the FileChute directory targeted by the user.
+
+## Yandex Images
+
+FileChute also supports Yandex Images, including common Yandex domains under:
+
+- `yandex.com`
+- `yandex.ru`
+- `yandex.kz`
+- `yandex.by`
+- `yandex.uz`
+- `yandex.com.tr`
+
+Yandex result pages can hide useful image URLs inside preview metadata, nested URL parameters, result attributes, or page-owned resources. FileChute captures those candidates while the drag begins and resolves the actual image when the drop reaches FileChute.
+
+## ChatGPT images
+
+FileChute supports dragging images from normal ChatGPT conversations and from the dedicated ChatGPT Images gallery at:
+
+```text
+https://chatgpt.com/images
+```
+
+The gallery can begin a drag from an overlay, tile wrapper, button, or other element rather than directly from the underlying `<img>`.
+
+FileChute handles that by priming the likely image source on pointer-down and confirming it again on drag start. It can inspect nearby image elements, `<picture>/<source>` elements, `srcset`, lazy/data-backed sources, normal HTTP(S) resources, page-owned blob URLs, and relevant gallery wrappers.
+
+This allows the ChatGPT Images gallery to behave like a practical source of files rather than a visually draggable interface whose useful payload disappears at the extension boundary.
+
+## No per-drop host permission nagging
+
+Browser-image drops do **not** intentionally interrupt the user with a new website-host permission request every time an image comes from a different CDN.
+
+FileChute reuses host access already granted when available and prefers source-page resource bridges where possible.
+
+Filesystem authorization is separate: Chromium may still require the user to reconnect a previously selected local directory if the browser itself has forgotten or revoked that filesystem permission.
+
+## Browse and organize the selected folder
+
+FileChute provides normal directory navigation inside the selected root:
+
+- directory rows
+- breadcrumbs
+- back and home navigation
+- selected-root-relative locations
+- copyable location text
+- configurable directory position
+- paged or whole-directory listing
+
+Visible categories can be filtered independently:
+
+- Images
+- Videos
+- Other files
+- Directories
+
+Convenience presets include:
+
+- Everything
+- Media only
+- Images
+- Videos
+- Folders
+
+Media priority can remain in the current order or favor images/videos first.
 
 ## Tiny previews, real files
 
-FileChute can generate 48px recognition thumbnails for images and, where Chromium can decode the format, a first-frame thumbnail for video such as MP4/WebM.
+FileChute can generate lightweight local recognition thumbnails for images and first-frame poster thumbnails for browser-decodable video.
 
-Those tiny previews are navigation aids and drag ghosts only. They never replace the original media being transferred.
+The important rule is:
 
-Thumbnail storage is deliberately configurable:
+**The thumbnail is a preview. The original is what moves.**
 
-```text
-browser thumbnail cache
-        +
-optional external thumbnail folder
-```
+Dragging the filename or dedicated drag grip represents the original file. Thumbnail dragging can also be configured to transfer either the original or the generated preview.
 
-After the first FileChute root is chosen, FileChute separately asks whether generated thumbnails should also be saved outside Chromium. If yes, the user chooses the destination folder. The external thumbnails are small WebP files and can be used to repopulate the fast browser cache after extension/browser data is cleared.
+Thumbnail generation is local. No FileChute upload service is required.
 
-## Metadata that can survive the browser
+Thumbnail storage can remain browser-managed or optionally be mirrored into a user-selected local folder.
 
-FileChute keeps metadata in a fast browser-local cache, but browser storage is not treated as the only durable copy.
+## Metadata and provenance
 
-After choosing the first FileChute root, FileChute separately asks whether metadata should also be saved outside Chromium. If enabled, the user chooses a normal writable folder and FileChute mirrors the structured data into:
+FileChute keeps browser-local metadata and can optionally mirror durable metadata into a normal user-selected folder.
 
-```text
-filechute-metadata.json
-```
-
-The durable metadata model reserves provenance fields such as:
+The metadata model can retain provenance such as:
 
 ```text
 sourceUrl      = direct URL of the image/media bytes
 parentPageUrl  = webpage where the item was found
 ```
 
-This lets a future Chute/FileChute capture preserve both **where the actual image came from** and **which page led you to it** without silently rewriting the original image bytes. Optional EXIF/XMP embedding can remain an explicit export feature later.
+This allows a saved browser resource to retain useful context without modifying the original image bytes.
 
-Metadata and thumbnail storage are independent choices. They may point at the same folder or entirely different folders.
+External metadata storage and external thumbnail storage are independent opt-in choices.
 
-## MVP
+## FileChute, Chute, and FrameChute
 
-- left-side in-page drawer toggled from the FileChute toolbar button
-- deliberately does not consume Chromium's native Side Panel, allowing the Chute Shelf to remain open simultaneously
-- explicit local-root selection with the File System Access API
-- folder navigation and breadcrumbs
-- filename + selected-root-relative location display
-- copyable/clickable location text
-- optional 48px image thumbnails
-- optional first-frame video thumbnails where Chromium can decode the format
-- browser-local thumbnail cache
-- optional external thumbnail mirror chosen by the user
-- browser-local metadata cache
-- optional external `filechute-metadata.json` mirror chosen by the user
-- provenance fields for direct source URL and parent-page URL
-- drag ghost uses the lightweight thumbnail
-- drag payload carries the original file
-- versioned `application/x-filechute-item+json` interoperability payload
-- directory payloads for FileChute-aware targets
-- opt-in localhost bridge permission when receiving an item directly from Chute
-- designed to interoperate with Chute and FrameChute
+FileChute is designed to participate in the Chute family:
+
+```text
+FileChute  = find and file it
+Chute      = hold it
+FrameChute = arrange and play it
+```
+
+FileChute exposes versioned drag metadata for richer interoperability while still preferring real `File` objects when Chromium preserves them.
+
+Compatible images, audio, video, ordinary files, and directory references can participate in the broader workflow without forcing the user through another file picker every time.
+
+FileChute also supports the reverse direction for supported FrameChute media so browser workspace items can return to the filesystem-oriented side of the workflow.
 
 ## Privacy model
 
-FileChute does not scan the machine on installation. The user explicitly chooses a directory, and FileChute receives access only to the selected directory tree through Chromium's File System Access API.
+FileChute is deliberately local-first.
 
-FileChute does not invent or expose a hidden absolute operating-system path Chromium did not provide. Locations shown inside the extension are anchored to the root folder the user explicitly selected.
+- It does not scan the machine on installation.
+- The user explicitly chooses the root directory FileChute may access.
+- FileChute does not require a FileChute cloud account.
+- Normal browsing, thumbnails, and metadata use browser/local storage rather than a mandatory hosted backend.
+- Optional external thumbnail and metadata locations are explicitly selected by the user.
+- FileChute does not invent or expose an absolute operating-system path Chromium did not provide.
+- Browser-origin provenance can be retained locally for the user's own files.
 
-External metadata and external thumbnail storage are opt-in and each destination is explicitly chosen by the user.
+Some supported browser-image integrations use narrowly targeted content scripts on Google, Yandex, and ChatGPT pages so the image source can be captured before Chromium loses useful drag information.
 
-The left drawer is injected only after the user clicks FileChute's toolbar button on the current tab. This keeps broad always-on website access out of the initial design.
+## Chromium permissions
 
-No FileChute cloud account or upload service is required.
+The current Manifest V3 build uses Chromium capabilities for:
 
-## Status
+- local extension storage
+- the browser side panel
+- active-tab/scripting support where required by browser-resource handoff
+- optional host access for browser resources that cannot be obtained through the source-page bridge
 
-Early exploratory build. The interaction model and interoperability contract are intentionally being established before Store packaging.
+A final permission-minimization review is part of the Chrome Web Store hardening pass. FileChute's design goal is to request no more access than the feature actually needs.
+
+## Install for development
+
+Clone the repository, then load it as an unpacked Chromium extension:
+
+```bash
+git clone https://github.com/thanks-cohn/filechute.git
+cd filechute
+```
+
+Open:
+
+```text
+chrome://extensions
+```
+
+Enable **Developer mode**, choose **Load unpacked**, and select the repository directory.
+
+After changing source-page capture code, reload FileChute from `chrome://extensions` and refresh any already-open Google Images, Yandex Images, or ChatGPT tabs so the updated content scripts are installed in those pages.
+
+## Current release checklist
+
+The v0.1.21 release candidate has working manual flows for:
+
+- local root selection and directory navigation
+- file drag-out
+- direct drop into the current directory
+- direct drop onto a child directory
+- green success / red failure feedback
+- Google Images → FileChute
+- Yandex Images → FileChute
+- ChatGPT conversation image → FileChute
+- ChatGPT Images gallery → FileChute
+- FileChute / FrameChute media interoperability
+
+Before Chrome Web Store submission, the remaining release work is intentionally boring:
+
+- final icon set and Store artwork
+- screenshots and listing copy
+- public privacy-policy URL
+- final permission audit
+- clean-profile install/restart smoke test
+- Store ZIP packaging
+
+That is the point of the current milestone: **freeze the useful behavior, harden the package, and ship it.**
