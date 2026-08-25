@@ -19,6 +19,7 @@ let pollBusy = false;
 let lastDirectoryKey = "";
 let lastDirectoryNames = null;
 let reloadScheduled = false;
+let refreshPausedUntil = 0;
 
 function setStatus(message, error = false) {
   if (!statusElement) return;
@@ -88,21 +89,45 @@ function injectStyles() {
       pointer-events: none;
       font: 700 15px/1 system-ui, sans-serif;
     }
+
+    /* The grab affordance belongs inside the one-line filename, not in its
+       own wide grid column. The filename itself remains a single visible row. */
+    .entry { position: relative; }
+    .entry-main { min-width: 0; padding-right: 4px; }
+    .entry-name {
+      display: flex !important;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+      width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+      cursor: grab;
+    }
+    .entry-name-text {
+      display: block;
+      min-width: 0;
+      flex: 1 1 auto;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
     .filechute-grip {
-      flex: 0 0 24px;
-      width: 24px;
-      height: calc(var(--thumbnail-size, 48px) + 2px);
-      min-height: 34px;
+      flex: 0 0 12px;
+      width: 12px;
+      height: 20px;
+      min-width: 12px;
+      min-height: 20px;
       display: grid;
       place-items: center;
       padding: 0;
-      margin: 0 -2px 0 2px;
+      margin: 0;
       border: 0;
-      border-radius: 7px;
+      border-radius: 4px;
       background: transparent;
       color: inherit;
       opacity: .44;
-      cursor: grab;
+      cursor: grab !important;
       touch-action: none;
     }
     .filechute-grip:hover,
@@ -111,30 +136,38 @@ function injectStyles() {
       background: rgba(255,255,255,.065);
       outline: none;
     }
-    .filechute-grip:active { cursor: grabbing; }
+    .filechute-grip:active,
+    .entry-name:active,
+    .preview-wrap:active {
+      cursor: grab !important;
+    }
     .filechute-grip-dots {
-      width: 10px;
-      height: 18px;
+      width: 7px;
+      height: 13px;
       display: grid;
-      grid-template-columns: repeat(2, 3px);
-      grid-template-rows: repeat(3, 3px);
-      gap: 3px 4px;
+      grid-template-columns: repeat(2, 2px);
+      grid-template-rows: repeat(3, 2px);
+      gap: 2px 3px;
       place-content: center;
     }
     .filechute-grip-dots i {
-      width: 3px;
-      height: 3px;
+      width: 2px;
+      height: 2px;
       border-radius: 50%;
       background: currentColor;
       display: block;
     }
+
+    /* New rows rise visually using flex order. We never move DOM nodes, so
+       the MutationObserver cannot recursively trigger itself. */
     .entry.filechute-recent {
       background: color-mix(in srgb, #d7ff3f 5%, transparent);
     }
     .entry.filechute-recent::after {
       content: "new";
-      align-self: start;
-      margin: 7px 7px 0 0;
+      position: absolute;
+      top: 6px;
+      right: 6px;
       padding: 2px 5px;
       border-radius: 999px;
       background: rgba(215,255,63,.13);
@@ -142,7 +175,9 @@ function injectStyles() {
       font: 700 9px/1 system-ui, sans-serif;
       text-transform: uppercase;
       letter-spacing: .04em;
+      pointer-events: none;
     }
+    .entry.filechute-recent .entry-main { padding-right: 34px; }
     .entry.filechute-search-hidden { display: none !important; }
   `;
   document.head.append(style);
@@ -184,7 +219,7 @@ function scheduleReload() {
   if (reloadScheduled) return;
   reloadScheduled = true;
   preserveCurrentPath();
-  setTimeout(() => location.reload(), 80);
+  setTimeout(() => location.reload(), 120);
 }
 
 function chuteNameFromToken(value) {
@@ -223,43 +258,56 @@ function namesFromDrop(transfer) {
 
 function resetDragUi() {
   document.body.classList.remove("filechute-drop-active");
+  document.documentElement.style.cursor = "";
+  document.body.style.cursor = "";
   document.querySelectorAll(".entry.dragging, .entry.drop-target").forEach((row) => {
     row.classList.remove("dragging", "drop-target");
   });
+  document.querySelectorAll(".filechute-grip").forEach((grip) => grip.blur?.());
 }
 
-function forwardGripDrag(event, row) {
-  const name = row.querySelector(".entry-name");
-  if (!name || !event.dataTransfer) return;
-  try {
-    const forwarded = new DragEvent("dragstart", {
-      bubbles: false,
-      cancelable: true,
-      dataTransfer: event.dataTransfer
-    });
-    name.dispatchEvent(forwarded);
-  } catch (error) {
-    console.warn("FileChute grab handle could not forward this drag", error);
-  }
-}
-
-function wireGrip(row) {
+function normalizeNameLine(row) {
   if (!(row instanceof HTMLElement)) return;
-  const grip = row.querySelector(":scope > .filechute-grip");
-  if (!grip || grip.dataset.filechuteWired === "true") return;
-  grip.dataset.filechuteWired = "true";
-  grip.draggable = true;
-  grip.title = row.classList.contains("directory") ? "Drag this folder" : "Drag the full original file";
-  grip.setAttribute("aria-label", grip.title);
-  grip.addEventListener("click", (event) => event.preventDefault());
-  grip.addEventListener("dragstart", (event) => forwardGripDrag(event, row));
-  grip.addEventListener("dragend", resetDragUi);
+  const name = row.querySelector(".entry-name");
+  const grip = row.querySelector(":scope > .filechute-grip") || name?.querySelector(".filechute-grip");
+  if (!name || !grip) return;
+
+  let text = name.querySelector(":scope > .entry-name-text");
+  if (!text) {
+    const label = [...name.childNodes]
+      .filter((node) => node !== grip)
+      .map((node) => node.textContent || "")
+      .join("")
+      .trim();
+    text = document.createElement("span");
+    text.className = "entry-name-text";
+    text.textContent = label;
+    name.replaceChildren(grip, text);
+  } else if (grip.parentElement !== name) {
+    name.prepend(grip);
+  }
+
+  if (grip.dataset.filechuteWired !== "true") {
+    grip.dataset.filechuteWired = "true";
+    grip.draggable = true;
+    grip.title = row.classList.contains("directory") ? "Drag this folder" : "Drag the full original file";
+    grip.setAttribute("aria-label", grip.title);
+    grip.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    /* The grip is now physically inside .entry-name. Its native dragstart
+       bubbles to sidepanel.js's real filename drag handler, so there is no
+       synthetic nested DragEvent and no stranded grabbing cursor. */
+    grip.addEventListener("dragstart", () => row.classList.add("dragging"));
+    grip.addEventListener("dragend", resetDragUi);
+  }
 }
 
 function applySearch() {
   const query = String(searchInput?.value || "").trim().toLocaleLowerCase();
   for (const row of entries?.querySelectorAll(".entry") || []) {
-    const name = String(row.querySelector(".entry-name")?.textContent || "").toLocaleLowerCase();
+    const name = String(row.querySelector(".entry-name-text")?.textContent || row.querySelector(".entry-name")?.textContent || "").toLocaleLowerCase();
     const path = String(row.querySelector(".entry-path")?.textContent || "").toLocaleLowerCase();
     row.classList.toggle("filechute-search-hidden", Boolean(query) && !name.includes(query) && !path.includes(query));
   }
@@ -267,20 +315,14 @@ function applySearch() {
 
 function decorateRows() {
   const recent = recentNames();
-  const recentSet = new Set(recent);
-  const rows = [...(entries?.querySelectorAll(".entry") || [])];
-  for (const row of rows) {
-    wireGrip(row);
-    const name = String(row.querySelector(".entry-name")?.textContent || "");
-    row.classList.toggle("filechute-recent", recentSet.has(name));
-  }
-
-  if (entries && recent.length) {
-    const byName = new Map(rows.map((row) => [String(row.querySelector(".entry-name")?.textContent || ""), row]));
-    for (const name of [...recent].reverse()) {
-      const row = byName.get(name);
-      if (row) entries.prepend(row);
-    }
+  const recentIndex = new Map(recent.map((name, index) => [name, index]));
+  for (const row of entries?.querySelectorAll(".entry") || []) {
+    normalizeNameLine(row);
+    const name = String(row.querySelector(".entry-name-text")?.textContent || "");
+    const index = recentIndex.get(name);
+    const isRecent = Number.isInteger(index);
+    row.classList.toggle("filechute-recent", isRecent);
+    row.style.order = isRecent ? String(-1000 + index) : "0";
   }
   applySearch();
   syncLocationInput();
@@ -294,7 +336,7 @@ function syncLocationInput() {
 function directoryRowNamed(name) {
   const wanted = String(name || "").toLocaleLowerCase();
   return [...(entries?.querySelectorAll(".entry.directory") || [])].find((row) =>
-    String(row.querySelector(".entry-name")?.textContent || "").toLocaleLowerCase() === wanted
+    String(row.querySelector(".entry-name-text")?.textContent || row.querySelector(".entry-name")?.textContent || "").toLocaleLowerCase() === wanted
   ) || null;
 }
 
@@ -346,8 +388,8 @@ async function navigateTypedLocation(value, { silent = false } = {}) {
 
   homeButton?.click();
   await waitForBreadcrumbPath([]);
-
   const travelled = [];
+
   for (const segment of requested) {
     if (segment === "..") {
       if (!silent) setStatus("Use FileChute's Back button to move upward.", true);
@@ -355,9 +397,7 @@ async function navigateTypedLocation(value, { silent = false } = {}) {
     }
     const row = await waitForDirectoryRow(segment);
     if (!row) {
-      if (!silent) {
-        setStatus(`FileChute cannot open “${segment}” under the selected root. Choose folder once if it is outside FileChute's permitted tree.`, true);
-      }
+      if (!silent) setStatus(`FileChute cannot open “${segment}” under the selected root. Choose folder once if it is outside FileChute's permitted tree.`, true);
       return false;
     }
     row.querySelector(".entry-name")?.click();
@@ -380,12 +420,10 @@ async function tryPreferredScreenshotsLocation() {
 
   const lower = rootName.toLocaleLowerCase();
   if (lower === "screenshots") return;
-
   if (lower === "pictures") {
     await navigateTypedLocation(`${rootName}/Screenshots`, { silent: true });
     return;
   }
-
   if (await navigateTypedLocation(`${rootName}/Pictures/Screenshots`, { silent: true })) return;
   await navigateTypedLocation(`${rootName}/Screenshots`, { silent: true });
 }
@@ -461,7 +499,7 @@ async function resolveDisplayedDirectory() {
 }
 
 async function scanDisplayedDirectory() {
-  if (pollBusy || document.hidden || reloadScheduled) return;
+  if (pollBusy || document.hidden || reloadScheduled || Date.now() < refreshPausedUntil) return;
   pollBusy = true;
   try {
     const directory = await resolveDisplayedDirectory();
@@ -476,7 +514,6 @@ async function scanDisplayedDirectory() {
       lastDirectoryNames = names;
       return;
     }
-
     if (names.join("\n") === lastDirectoryNames.join("\n")) return;
 
     const previous = new Set(lastDirectoryNames);
@@ -495,22 +532,26 @@ injectStyles();
 installNavigationTools();
 decorateRows();
 
+/* Observe only direct row additions/removals. decorateRows changes classes,
+   styles and children but never reorders the row nodes, so this stays finite. */
 const observer = new MutationObserver(() => decorateRows());
 if (entries) observer.observe(entries, { childList: true });
 if (breadcrumbs) observer.observe(breadcrumbs, { childList: true, characterData: true, subtree: true });
 
 document.addEventListener("drop", (event) => {
+  refreshPausedUntil = Date.now() + 1800;
   const names = namesFromDrop(event.dataTransfer);
   if (names.length) saveRecent(names);
   setTimeout(resetDragUi, 0);
 }, true);
 
 document.addEventListener("dragend", resetDragUi, true);
-window.addEventListener("blur", () => setTimeout(resetDragUi, 60));
+window.addEventListener("blur", () => setTimeout(resetDragUi, 0));
 window.addEventListener("focus", resetDragUi);
+window.addEventListener("mouseup", resetDragUi, true);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) resetDragUi();
 });
 
-setInterval(() => void scanDisplayedDirectory(), 850);
+setInterval(() => void scanDisplayedDirectory(), 1000);
 setTimeout(() => void tryPreferredScreenshotsLocation(), 650);
