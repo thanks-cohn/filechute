@@ -94,6 +94,28 @@ function rowPath(row) {
   return String(row?.querySelector(".entry-path")?.textContent || "").trim();
 }
 
+function rowIsInsideResized(row) {
+  const parts = rowPath(row).split("/").map((part) => part.trim()).filter(Boolean);
+  return parts.length >= 2 && parts.at(-2)?.toLowerCase() === RESIZED_FOLDER;
+}
+
+function syncResizedButtonVisibility() {
+  for (const row of entries?.querySelectorAll(".entry:not(.directory)") || []) {
+    const button = row.querySelector(".filechute-output-folder-button");
+    if (!(button instanceof HTMLElement)) continue;
+
+    const hidden = rowIsInsideResized(row);
+    button.hidden = hidden;
+    if (hidden) {
+      button.setAttribute("aria-hidden", "true");
+      button.setAttribute("tabindex", "-1");
+    } else {
+      button.removeAttribute("aria-hidden");
+      if (button.getAttribute("tabindex") === "-1") button.removeAttribute("tabindex");
+    }
+  }
+}
+
 async function rootWithReadPermission() {
   const root = await readStored(ROOT_HANDLE_KEY);
   if (!root || root.kind !== "directory") return null;
@@ -187,6 +209,7 @@ function interceptResizedFolderButton(event) {
 
 function install() {
   updateDimensionHints();
+  syncResizedButtonVisibility();
 
   const form = document.querySelector("#resize-v3-form");
   if (form instanceof HTMLFormElement && form.dataset.filechuteSingleDimension !== "true") {
