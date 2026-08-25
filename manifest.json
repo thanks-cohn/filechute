@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FileChute",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Browse user-selected local files from a persistent browser side panel and drag the originals where you need them.",
   "permissions": ["storage", "activeTab", "scripting", "sidePanel"],
   "optional_host_permissions": [
@@ -33,6 +33,7 @@
         "sidepanel.html",
         "sidepanel.css",
         "pagination.css",
+        "settings-media.css",
         "sidepanel.js",
         "ui-enhancements.js",
         "directory-visibility.js",

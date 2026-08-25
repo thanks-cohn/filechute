@@ -6,6 +6,7 @@
   <title>FileChute</title>
   <link rel="stylesheet" href="sidepanel.css">
   <link rel="stylesheet" href="pagination.css">
+  <link rel="stylesheet" href="settings-media.css">
 </head>
 <body>
   <header class="topbar">
@@ -55,7 +56,7 @@
       <div class="dialog-heading">
         <div>
           <h2>FileChute settings</h2>
-          <p>Choose how FileChute looks and loads. Changes apply only when you press OK.</p>
+          <p>Choose what FileChute shows, how much it loads, and where optional thumbnail copies live. Changes apply only when you press OK.</p>
         </div>
         <button id="settings-cancel-x" class="dialog-close" type="button" aria-label="Cancel settings">×</button>
       </div>
@@ -73,22 +74,39 @@
       </section>
 
       <section class="settings-section">
-        <h3>View</h3>
-        <label class="setting-stack" for="view-mode">
-          <span>Show</span>
-          <select id="view-mode">
-            <option value="all" selected>Directories + files</option>
-            <option value="images">Images only</option>
-          </select>
-          <small>Default: directories and files. Images-only mode hides folders and non-image files.</small>
+        <h3>Visible items</h3>
+        <div class="preset-row" aria-label="Visibility presets">
+          <button type="button" data-visibility-preset="everything">Everything</button>
+          <button type="button" data-visibility-preset="media">Media only</button>
+          <button type="button" data-visibility-preset="images">Images</button>
+          <button type="button" data-visibility-preset="videos">Videos</button>
+          <button type="button" data-visibility-preset="folders">Folders</button>
+        </div>
+
+        <label class="setting-row checkbox-row">
+          <span>Images</span>
+          <input id="show-images" type="checkbox" checked>
         </label>
+        <label class="setting-row checkbox-row">
+          <span>Videos</span>
+          <input id="show-videos" type="checkbox" checked>
+        </label>
+        <label class="setting-row checkbox-row">
+          <span>Other files</span>
+          <input id="show-other-files" type="checkbox" checked>
+        </label>
+        <label class="setting-row checkbox-row">
+          <span>Directories</span>
+          <input id="show-directories" type="checkbox" checked>
+        </label>
+
         <label class="setting-stack" for="directory-position">
           <span>Directory position</span>
           <select id="directory-position">
             <option value="top" selected>Top</option>
             <option value="bottom">Bottom</option>
           </select>
-          <small>Default: directories at the top. This setting has no effect in Images only mode.</small>
+          <small>Directories are independent from media filters and stay outside file pagination.</small>
         </label>
       </section>
 
@@ -97,27 +115,32 @@
         <label class="setting-stack" for="directory-list-mode">
           <span>Directory loading</span>
           <select id="directory-list-mode">
-            <option value="paged" selected>50 files at a time</option>
-            <option value="all">Load the entire directory</option>
+            <option value="paged" selected>Show a chosen number at a time</option>
+            <option value="all">Whole directory</option>
           </select>
-          <small>Default: 50 files per page. Visible directories stay outside file pagination so they can always be opened or dragged into FrameChute.</small>
+        </label>
+
+        <label class="setting-stack" for="files-per-page">
+          <span>Files shown at a time</span>
+          <input id="files-per-page" type="number" min="1" max="5000" step="1" value="50" inputmode="numeric">
+          <small>Default: 50. This count applies after the image/video/other-file filters. Choose Whole directory above to show every matching file.</small>
         </label>
       </section>
 
       <section class="settings-section">
         <h3>Thumbnails</h3>
         <label class="setting-row checkbox-row">
-          <span>Show thumbnails</span>
+          <span>Generate thumbnails</span>
           <input id="show-thumbnails" type="checkbox" checked>
         </label>
         <label class="setting-row checkbox-row">
-          <span>Video first-frame thumbnails</span>
+          <span>Generate video poster frames</span>
           <input id="video-thumbnails" type="checkbox" checked>
         </label>
         <label class="setting-stack" for="thumbnail-size">
           <span class="setting-label-line"><span>Thumbnail size</span><output id="thumbnail-size-value">48px</output></span>
           <input id="thumbnail-size" type="range" min="24" max="160" step="4" value="48">
-          <small>Default: 48px. Moving this slider does not generate new thumbnails until you press OK.</small>
+          <small>Default: 48px. Thumbnails are generated locally in the browser. Nothing is uploaded.</small>
         </label>
       </section>
 
@@ -129,12 +152,13 @@
             <option value="original" selected>Transfer the full original file</option>
             <option value="thumbnail">Transfer the generated thumbnail</option>
           </select>
-          <small>Default: original. Dragging the filename always transfers the full original file.</small>
+          <small>Default: original. Dragging the filename or six-dot grip always transfers the full original file. Videos can be dragged directly into FrameChute.</small>
         </label>
       </section>
 
       <section class="settings-section">
         <h3>Durable storage</h3>
+        <p class="settings-note">Browser-managed thumbnail storage is the default. You may also choose a normal local folder so generated WebP thumbnails survive removing or reinstalling FileChute.</p>
         <button id="metadata-location" class="storage-button" type="button">Metadata: browser only</button>
         <button id="thumbnail-location" class="storage-button" type="button">Thumbs: browser only</button>
       </section>
@@ -160,7 +184,7 @@
   <dialog id="thumbnail-dialog">
     <form method="dialog" class="dialog-card">
       <h2>Keep thumbnails outside Chromium too?</h2>
-      <p>Generated image and video thumbnails are cached in the browser for speed. FileChute can also mirror the tiny WebP previews into a folder you choose so they survive browser cache or extension-data cleanup.</p>
+      <p>Generated image and video thumbnails are cached in the browser for speed. FileChute can also mirror the tiny WebP previews into a folder you choose so they survive browser cache, extension-data cleanup, or removing FileChute.</p>
       <div class="dialog-actions">
         <button id="thumbnail-browser-only" value="browser-only" type="submit">Browser only</button>
         <button id="thumbnail-choose" class="primary" value="choose" type="button">Choose thumbnail folder</button>
