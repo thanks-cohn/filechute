@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FileChute",
-  "version": "0.1.30",
+  "version": "0.1.31",
   "description": "Browse user-selected local files from a persistent browser side panel and drag the originals where you need them.",
   "permissions": ["storage", "activeTab", "scripting", "sidePanel"],
   "optional_host_permissions": [
@@ -16,7 +16,7 @@
     "default_path": "sidepanel.html"
   },
   "background": {
-    "service_worker": "service-worker.js",
+    "service_worker": "service-worker-bootstrap.js",
     "type": "module"
   },
   "content_scripts": [
@@ -34,7 +34,7 @@
     },
     {
       "matches": ["https://*.google.com/*"],
-      "js": ["google-image-drag-source.js", "page-resource-export.js"],
+      "js": ["google-image-drag-source.js", "page-drop-bridge.js", "page-resource-export.js"],
       "run_at": "document_start",
       "all_frames": false
     },
@@ -47,7 +47,7 @@
         "https://*.yandex.uz/*",
         "https://*.yandex.com.tr/*"
       ],
-      "js": ["yandex-image-drag-source.js", "page-resource-export.js"],
+      "js": ["yandex-image-drag-source.js", "page-drop-bridge.js", "page-resource-export.js"],
       "run_at": "document_start",
       "all_frames": false
     }
@@ -60,6 +60,8 @@
         "pagination.css",
         "settings-media.css",
         "sidepanel.js",
+        "shelf-live-refresh.js",
+        "single-destination-drop.js",
         "ui-enhancements.js",
         "directory-visibility.js",
         "drop-feedback.js",
