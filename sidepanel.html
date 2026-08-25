@@ -106,7 +106,17 @@
             <option value="top" selected>Top</option>
             <option value="bottom">Bottom</option>
           </select>
-          <small>Directories are independent from media filters and stay outside file pagination.</small>
+          <small>Default: directories stay visible at the top. Turn Directories off above if you want a media-only initial view.</small>
+        </label>
+
+        <label class="setting-stack" for="media-priority">
+          <span>Media priority</span>
+          <select id="media-priority">
+            <option value="mixed" selected>Current order (default)</option>
+            <option value="images">Images first</option>
+            <option value="videos">Videos first</option>
+          </select>
+          <small>When directories are at the top, this controls what appears immediately underneath them. The default preserves FileChute's current ordering.</small>
         </label>
       </section>
 
@@ -152,7 +162,7 @@
             <option value="original" selected>Transfer the full original file</option>
             <option value="thumbnail">Transfer the generated thumbnail</option>
           </select>
-          <small>Default: original. Dragging the filename or six-dot grip always transfers the full original file. Videos can be dragged directly into FrameChute.</small>
+          <small>Default: original. Dragging the filename or six-dot grip always transfers the full original file. Audio and video files can be dragged directly into FrameChute.</small>
         </label>
       </section>
 
