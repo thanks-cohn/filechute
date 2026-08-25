@@ -1,15 +1,25 @@
 import { readStored } from "./storage.js";
 
-const VIEW_MODE_KEY = "filechute-view-mode";
+const SHOW_IMAGES_KEY = "filechute-show-images";
+const SHOW_VIDEOS_KEY = "filechute-show-videos";
+const SHOW_OTHER_FILES_KEY = "filechute-show-other-files";
+const SHOW_DIRECTORIES_KEY = "filechute-show-directories";
 const DIRECTORY_POSITION_KEY = "filechute-directory-position";
+
 const entries = document.querySelector("#entries");
 const breadcrumbs = document.querySelector("#breadcrumbs");
 
 const IMAGE_EXTENSIONS = new Set([
   "jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "ico", "apng"
 ]);
+const VIDEO_EXTENSIONS = new Set([
+  "mp4", "m4v", "webm", "ogv", "ogg", "mov", "mkv"
+]);
 
-let viewMode = "all";
+let showImages = true;
+let showVideos = true;
+let showOtherFiles = true;
+let showDirectories = true;
 let directoryPosition = "top";
 
 function rootNameFromBreadcrumbs() {
@@ -21,10 +31,11 @@ function rootNameFromBreadcrumbs() {
 function disableAutomaticFolderDive() {
   const rootName = rootNameFromBreadcrumbs();
   if (!rootName) return;
-  // The directory selected by the user is authoritative. FileChute must not
-  // silently dive into Pictures/Screenshots or any other child folder.
   try {
-    sessionStorage.setItem(`filechute-default-location-v1:${rootName.toLocaleLowerCase()}`, "done");
+    sessionStorage.setItem(
+      `filechute-default-location-v1:${rootName.toLocaleLowerCase()}`,
+      "done"
+    );
   } catch {}
 }
 
@@ -36,65 +47,86 @@ function rowName(row) {
   ).trim();
 }
 
-function isImageName(name) {
+function extensionOf(name) {
   const value = String(name || "").toLocaleLowerCase();
   const dot = value.lastIndexOf(".");
-  return dot >= 0 && IMAGE_EXTENSIONS.has(value.slice(dot + 1));
+  return dot < 0 ? "" : value.slice(dot + 1);
+}
+
+function fileCategory(name) {
+  const ext = extensionOf(name);
+  if (IMAGE_EXTENSIONS.has(ext)) return "image";
+  if (VIDEO_EXTENSIONS.has(ext)) return "video";
+  return "other";
+}
+
+function categoryVisible(category) {
+  if (category === "image") return showImages;
+  if (category === "video") return showVideos;
+  return showOtherFiles;
 }
 
 function applyViewPolicy(root = document) {
   if (!entries) return;
-  entries.dataset.filechuteViewMode = viewMode;
   entries.dataset.filechuteDirectoryPosition = directoryPosition;
 
   for (const row of root.querySelectorAll?.(".entry") || []) {
     const isDirectory = row.classList.contains("directory");
+
     if (isDirectory) {
       row.dataset.filechuteDirectory = "true";
-      row.hidden = viewMode === "images";
+      row.hidden = !showDirectories;
       const name = row.querySelector(".entry-name-text") || row.querySelector(".entry-name");
       if (name) name.title = "Click to open · drag to FrameChute as a gallery";
-      const preview = row.querySelector(".preview-wrap");
-      if (preview) preview.title = "Drag this folder to FrameChute as a gallery";
       continue;
     }
 
-    const image = isImageName(rowName(row));
-    row.classList.toggle("filechute-non-image", !image);
-    row.hidden = viewMode === "images" && !image;
+    const category = fileCategory(rowName(row));
+    row.dataset.filechuteMediaKind = category;
+    row.hidden = !categoryVisible(category);
   }
 }
 
 const style = document.createElement("style");
 style.dataset.filechuteDirectoryVisibility = "true";
 style.textContent = `
-  /* Directories are first-class FileChute objects and never participate in
-     the 50-file page count. Their placement is a user preference. */
-  #entries[data-filechute-view-mode="all"][data-filechute-directory-position="top"] > .entry.directory {
-    display: grid !important;
+  #entries[data-filechute-directory-position="top"] > .entry.directory {
     order: -100000 !important;
   }
-  #entries[data-filechute-view-mode="all"][data-filechute-directory-position="bottom"] > .entry.directory {
-    display: grid !important;
+  #entries[data-filechute-directory-position="bottom"] > .entry.directory {
     order: 100000 !important;
-  }
-  #entries[data-filechute-view-mode="images"] > .entry.directory,
-  #entries[data-filechute-view-mode="images"] > .entry.filechute-non-image {
-    display: none !important;
   }
   #entries > .entry.directory .fallback-icon { filter: none; }
 `;
 document.head.append(style);
 
 async function initializeViewPolicy() {
-  viewMode = (await readStored(VIEW_MODE_KEY)) === "images" ? "images" : "all";
-  directoryPosition = (await readStored(DIRECTORY_POSITION_KEY)) === "bottom" ? "bottom" : "top";
+  const [images, videos, other, directories, position] = await Promise.all([
+    readStored(SHOW_IMAGES_KEY),
+    readStored(SHOW_VIDEOS_KEY),
+    readStored(SHOW_OTHER_FILES_KEY),
+    readStored(SHOW_DIRECTORIES_KEY),
+    readStored(DIRECTORY_POSITION_KEY)
+  ]);
+
+  showImages = images !== false;
+  showVideos = videos !== false;
+  showOtherFiles = other !== false;
+  showDirectories = directories !== false;
+  directoryPosition = position === "bottom" ? "bottom" : "top";
+
   disableAutomaticFolderDive();
   applyViewPolicy();
 }
 
 const breadcrumbObserver = new MutationObserver(() => disableAutomaticFolderDive());
-if (breadcrumbs) breadcrumbObserver.observe(breadcrumbs, { childList: true, characterData: true, subtree: true });
+if (breadcrumbs) {
+  breadcrumbObserver.observe(breadcrumbs, {
+    childList: true,
+    characterData: true,
+    subtree: true
+  });
+}
 
 const entryObserver = new MutationObserver((mutations) => {
   for (const mutation of mutations) {
