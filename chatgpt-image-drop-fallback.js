@@ -256,9 +256,11 @@ document.addEventListener("drop", (event) => {
   const directFile = directFileFromTransfer(transfer);
   const origins = originPatterns(capture.urls);
 
+  // Never interrupt a physical drop with a new host-access confirmation.
+  // Existing access may be reused; otherwise the page bridge gets first shot.
   let permissionPromise = Promise.resolve(false);
   if (origins.length) {
-    try { permissionPromise = chrome.permissions.request({ origins }); } catch {}
+    try { permissionPromise = chrome.permissions.contains({ origins }); } catch {}
   }
 
   void Promise.resolve(permissionPromise)
