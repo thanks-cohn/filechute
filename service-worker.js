@@ -4,10 +4,28 @@ const STANDALONE_WIDTH = 390;
 const STANDALONE_HEIGHT = 760;
 const STANDALONE_WINDOW_KEY = "filechute-standalone-window-id";
 const ROOT_HANDLE_KEY = "filechute-root-handle";
+const LAUNCH_MODE_KEY = "filechute-launch-mode";
 const TRANSFER_PREFIX = "filechute-transfer-v1:";
 const GALLERY_SOURCE_PREFIX = "filechute-gallery-source-v1:";
 const MAX_INLINE_TRANSFER_BYTES = 48 * 1024 * 1024;
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "ico", "apng"]);
+
+async function fileChuteLaunchMode() {
+  return (await readStored(LAUNCH_MODE_KEY)) === "window" ? "window" : "panel";
+}
+
+async function configureLaunchBehavior(requestedMode = null) {
+  const mode = requestedMode === "window" ? "window" : requestedMode === "panel" ? "panel" : await fileChuteLaunchMode();
+  if (!chrome.sidePanel) return mode;
+
+  try {
+    await chrome.sidePanel.setOptions({ path: "sidepanel.html", enabled: true });
+    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: mode === "panel" });
+  } catch (error) {
+    console.warn("FileChute could not configure the browser side panel.", error);
+  }
+  return mode;
+}
 
 async function rememberedStandaloneWindow() {
   try {
@@ -74,44 +92,6 @@ async function openStandaloneFileChute(tab) {
   });
 
   await rememberStandaloneWindow(created?.id);
-}
-
-async function injectPageDropBridge(tab) {
-  if (!tab?.id) return false;
-  await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    files: ["page-drop-bridge.js"]
-  });
-  return true;
-}
-
-async function toggleFileChute(tab) {
-  const standalone = await rememberedStandaloneWindow();
-
-  if (standalone?.id && tab?.id) {
-    try {
-      await injectPageDropBridge(tab);
-      await focusStandalone(standalone);
-      return;
-    } catch (error) {
-      console.info("This page cannot host the FileChute website drop bridge.", error);
-    }
-  }
-
-  if (!tab?.id) {
-    await openStandaloneFileChute(tab);
-    return;
-  }
-
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ["drawer-host.js"]
-    });
-  } catch (error) {
-    console.info("FileChute cannot inject into this page; opening the standalone left shelf instead.", error);
-    await openStandaloneFileChute(tab);
-  }
 }
 
 function transferKey(token) {
@@ -334,6 +314,13 @@ async function handleBridgeMessage(message) {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "filechute-launch-mode-changed") {
+    void configureLaunchBehavior(message?.launchMode)
+      .then((mode) => sendResponse({ ok: true, launchMode: mode }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+
   if (message?.type === "filechute-register-transfer-v1") {
     void registerTransfer(message)
       .then((ok) => sendResponse({ ok }))
@@ -356,8 +343,14 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
   return true;
 });
 
+// In the default panel mode Chrome owns the action click and toggles the
+// persistent browser side panel. This listener only does work when the user
+// explicitly selects the legacy floating-window mode in FileChute settings.
 chrome.action.onClicked.addListener((tab) => {
-  void toggleFileChute(tab);
+  void (async () => {
+    if ((await fileChuteLaunchMode()) !== "window") return;
+    await openStandaloneFileChute(tab);
+  })();
 });
 
 chrome.windows.onRemoved.addListener((windowId) => {
@@ -366,3 +359,14 @@ chrome.windows.onRemoved.addListener((windowId) => {
     if (stored?.[STANDALONE_WINDOW_KEY] === windowId) await forgetStandaloneWindow();
   })();
 });
+
+chrome.runtime.onInstalled.addListener(() => {
+  void configureLaunchBehavior();
+});
+chrome.runtime.onStartup.addListener(() => {
+  void configureLaunchBehavior();
+});
+
+// Service workers are ephemeral, so also restore the chosen action behavior
+// whenever this worker is started for any reason.
+void configureLaunchBehavior();
