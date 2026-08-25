@@ -136,7 +136,7 @@ function visibleResizedDirectoryRow() {
   }) || null;
 }
 
-async function openClosestSystemLocation(row) {
+async function openResizedLocation(row) {
   let resolved;
   try {
     resolved = await resizedDirectoryForRow(row);
@@ -148,35 +148,14 @@ async function openClosestSystemLocation(row) {
     throw error;
   }
 
-  // Chromium does not expose an absolute OS path for a FileSystemHandle, so a
-  // dependency-free extension cannot launch Dolphin or reveal/select the file
-  // there. The closest system UI is the native open-file picker, started in
-  // the exact resized/ parent directory.
-  if (typeof window.showOpenFilePicker === "function") {
-    try {
-      setStatus(`Opening the system file picker at ${[resolved.root.name, ...resolved.targetParts].join("/")}…`);
-      await window.showOpenFilePicker({
-        startIn: resolved.directory,
-        multiple: false,
-        types: [{
-          description: "Images",
-          accept: {
-            "image/*": [".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif", ".bmp"]
-          }
-        }]
-      });
-      return;
-    } catch (error) {
-      if (error?.name === "AbortError") return;
-      console.debug("Native picker unavailable; opening resized/ inside FileChute instead", error);
-    }
-  }
-
+  // Do not invoke a system Open/Cancel file picker. A browser extension cannot
+  // directly launch Dolphin without a native helper, so the dependency-free
+  // behavior is to navigate straight to the resolved folder inside FileChute.
   const visible = visibleResizedDirectoryRow();
   const name = visible?.querySelector(".entry-name");
   if (name instanceof HTMLElement) {
     name.click();
-    setStatus("Opened resized/ inside FileChute.");
+    setStatus("Opened resized/.");
     return;
   }
 
@@ -200,7 +179,7 @@ function interceptResizedFolderButton(event) {
 
   event.preventDefault();
   event.stopImmediatePropagation();
-  void openClosestSystemLocation(row).catch((error) => {
+  void openResizedLocation(row).catch((error) => {
     console.error("FileChute could not open resized location", error);
     setStatus(error?.message || "Could not open the resized location.", true);
   });
