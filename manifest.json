@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FileChute",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Browse user-selected local files from a floating Chromium file window and drag the originals where you need them.",
   "permissions": ["storage", "activeTab", "scripting"],
   "optional_host_permissions": [
@@ -29,6 +29,7 @@
       "resources": [
         "sidepanel.html",
         "sidepanel.css",
+        "pagination.css",
         "sidepanel.js",
         "ui-enhancements.js",
         "directory-drag.js",
