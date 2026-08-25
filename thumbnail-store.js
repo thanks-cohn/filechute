@@ -1,6 +1,7 @@
 import { readStored, writeStored, removeStored } from "./storage.js";
 
 const EXTERNAL_HANDLE_KEY = "thumbnail-directory-handle";
+const CHOICE_KEY = "filechute-thumbnail-storage-choice";
 const CACHE_PREFIX = "thumbnail-cache-v1:";
 const FORMAT = "image/webp";
 
@@ -23,6 +24,13 @@ async function requestPermission(handle, mode = "readwrite") {
   }
 }
 
+async function localMirrorEnabled(storedHandle = null) {
+  const choice = await readStored(CHOICE_KEY);
+  if (choice === "external") return true;
+  if (choice === "browser") return false;
+  return Boolean(storedHandle);
+}
+
 async function digestName(key) {
   const bytes = new TextEncoder().encode(String(key));
   const hash = await crypto.subtle.digest("SHA-256", bytes);
@@ -30,32 +38,53 @@ async function digestName(key) {
   return `filechute-${hex.slice(0, 32)}.webp`;
 }
 
+export async function setExternalThumbnailEnabled(enabled) {
+  await writeStored(CHOICE_KEY, enabled ? "external" : "browser");
+}
+
 export async function chooseExternalThumbnailDirectory() {
   const handle = await window.showDirectoryPicker({ mode: "readwrite" });
   if (!handle) return null;
   if (!(await requestPermission(handle))) return null;
-  await writeStored(EXTERNAL_HANDLE_KEY, handle);
+  await Promise.all([
+    writeStored(EXTERNAL_HANDLE_KEY, handle),
+    writeStored(CHOICE_KEY, "external")
+  ]);
   return handle;
 }
 
 export async function getExternalThumbnailDirectory({ request = false } = {}) {
   const handle = await readStored(EXTERNAL_HANDLE_KEY);
-  if (!handle) return null;
+  if (!handle || !(await localMirrorEnabled(handle))) return null;
   const ok = request ? await requestPermission(handle) : await hasPermission(handle);
   return ok ? handle : null;
 }
 
 export async function forgetExternalThumbnailDirectory() {
-  await removeStored(EXTERNAL_HANDLE_KEY);
+  await Promise.all([
+    removeStored(EXTERNAL_HANDLE_KEY),
+    writeStored(CHOICE_KEY, "browser")
+  ]);
 }
 
 export async function externalThumbnailStatus() {
   const stored = await readStored(EXTERNAL_HANDLE_KEY);
-  if (!stored) return { configured: false, available: false, name: null };
+  const enabled = await localMirrorEnabled(stored);
+  if (!stored) {
+    return {
+      enabled,
+      configured: false,
+      available: false,
+      name: null,
+      handle: null
+    };
+  }
   return {
+    enabled,
     configured: true,
     available: await hasPermission(stored),
-    name: stored.name || "Thumbnail folder"
+    name: stored.name || "Thumbnail folder",
+    handle: stored
   };
 }
 
