@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FileChute</title>
   <link rel="stylesheet" href="sidepanel.css">
+  <link rel="stylesheet" href="pagination.css">
 </head>
 <body>
   <header class="topbar">
@@ -22,6 +23,12 @@
     <button id="back" type="button" title="Back">‹</button>
     <button id="home" type="button" title="Selected root">⌂</button>
     <div id="breadcrumbs" class="breadcrumbs" aria-label="Current folder"></div>
+  </section>
+
+  <section id="page-controls" class="page-controls" aria-label="Directory pages" hidden>
+    <button id="page-prev" type="button" title="Previous 50 files" aria-label="Previous 50 files">‹</button>
+    <div id="page-label" class="page-label">1 / 1</div>
+    <button id="page-next" type="button" title="Next 50 files" aria-label="Next 50 files">›</button>
   </section>
 
   <div id="status" class="status">Choose a local folder to begin.</div>
@@ -52,6 +59,18 @@
         </div>
         <button class="dialog-close" value="close" type="submit" aria-label="Close settings">×</button>
       </div>
+
+      <section class="settings-section">
+        <h3>Listing</h3>
+        <label class="setting-stack" for="directory-list-mode">
+          <span>Directory loading</span>
+          <select id="directory-list-mode">
+            <option value="paged" selected>50 files at a time</option>
+            <option value="all">Load the entire directory</option>
+          </select>
+          <small>Default: 50 files per page. Folders always remain visible above the file pages so they can be opened or dragged into FrameChute.</small>
+        </label>
+      </section>
 
       <section class="settings-section">
         <h3>Thumbnails</h3>
