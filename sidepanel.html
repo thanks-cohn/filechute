@@ -51,14 +51,34 @@
   </template>
 
   <dialog id="settings-dialog">
-    <form method="dialog" class="dialog-card settings-card">
+    <form id="settings-form" class="dialog-card settings-card">
       <div class="dialog-heading">
         <div>
           <h2>FileChute settings</h2>
-          <p>Previews stay lightweight. Originals stay authoritative.</p>
+          <p>Choose how FileChute looks and loads. Changes apply only when you press OK.</p>
         </div>
-        <button class="dialog-close" value="close" type="submit" aria-label="Close settings">×</button>
+        <button id="settings-cancel-x" class="dialog-close" type="button" aria-label="Cancel settings">×</button>
       </div>
+
+      <section class="settings-section">
+        <h3>View</h3>
+        <label class="setting-stack" for="view-mode">
+          <span>Show</span>
+          <select id="view-mode">
+            <option value="all" selected>Directories + files</option>
+            <option value="images">Images only</option>
+          </select>
+          <small>Default: directories and files. Images-only mode hides folders and non-image files.</small>
+        </label>
+        <label class="setting-stack" for="directory-position">
+          <span>Directory position</span>
+          <select id="directory-position">
+            <option value="top" selected>Top</option>
+            <option value="bottom">Bottom</option>
+          </select>
+          <small>Default: directories at the top. This setting has no effect in Images only mode.</small>
+        </label>
+      </section>
 
       <section class="settings-section">
         <h3>Listing</h3>
@@ -68,7 +88,7 @@
             <option value="paged" selected>50 files at a time</option>
             <option value="all">Load the entire directory</option>
           </select>
-          <small>Default: 50 files per page. Folders always remain visible above the file pages so they can be opened or dragged into FrameChute.</small>
+          <small>Default: 50 files per page. Visible directories stay outside file pagination so they can always be opened or dragged into FrameChute.</small>
         </label>
       </section>
 
@@ -85,7 +105,7 @@
         <label class="setting-stack" for="thumbnail-size">
           <span class="setting-label-line"><span>Thumbnail size</span><output id="thumbnail-size-value">48px</output></span>
           <input id="thumbnail-size" type="range" min="24" max="160" step="4" value="48">
-          <small>Default: 48px. Each file row grows or shrinks with this size.</small>
+          <small>Default: 48px. Moving this slider does not generate new thumbnails until you press OK.</small>
         </label>
       </section>
 
@@ -106,6 +126,11 @@
         <button id="metadata-location" class="storage-button" type="button">Metadata: browser only</button>
         <button id="thumbnail-location" class="storage-button" type="button">Thumbs: browser only</button>
       </section>
+
+      <div class="dialog-actions">
+        <button id="settings-cancel" type="button">Cancel</button>
+        <button id="settings-ok" class="primary" type="submit">OK</button>
+      </div>
     </form>
   </dialog>
 
