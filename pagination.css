@@ -1,0 +1,46 @@
+.page-controls {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  gap: 7px;
+  align-items: center;
+  padding: 4px 10px 7px;
+  border-bottom: 1px solid #242826;
+}
+
+.page-controls[hidden] {
+  display: none;
+}
+
+.page-controls button {
+  width: 36px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.page-label {
+  min-width: 0;
+  text-align: center;
+  color: #aab2ad;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entry.directory {
+  order: -3000 !important;
+}
+
+.entry.directory .entry-name-text,
+.entry.directory .entry-name {
+  color: #e6ebdf;
+  font-weight: 720;
+}
+
+.entry.directory .fallback-icon {
+  filter: none;
+}
