@@ -8,13 +8,13 @@ import {
   externalThumbnailStatus,
   setExternalThumbnailEnabled
 } from "./thumbnail-store.js";
+import "./image-resize.js";
 
 const metadataToggle = document.querySelector("#metadata-local-enabled");
 const thumbnailToggle = document.querySelector("#thumbnail-local-enabled");
 const metadataButton = document.querySelector("#metadata-local-location");
 const thumbnailButton = document.querySelector("#thumbnail-local-location");
 const statusElement = document.querySelector("#status");
-const entriesElement = document.querySelector("#entries");
 
 let metadataState = null;
 let thumbnailState = null;
@@ -38,44 +38,6 @@ function localLabel(kind, state) {
   return `${kind}: ${name}`;
 }
 
-function perItemSaveControl(element) {
-  if (!(element instanceof HTMLElement)) return false;
-  if (!element.closest(".entry")) return false;
-  if (!element.matches("button, a, [role='button']")) return false;
-
-  if (element.matches(
-    ".entry-save, .image-save, .filechute-save-button, [data-filechute-save-action]"
-  )) return true;
-
-  const label = [
-    element.textContent,
-    element.getAttribute("aria-label"),
-    element.getAttribute("title")
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .trim()
-    .toLocaleLowerCase();
-
-  return /(^|\s)save(?:\s|$|\b)/i.test(label);
-}
-
-function syncPerItemSaveButtons(autoLocal) {
-  if (!entriesElement) return;
-  const controls = entriesElement.querySelectorAll("button, a, [role='button']");
-  for (const control of controls) {
-    if (!perItemSaveControl(control)) continue;
-    control.classList.toggle("filechute-auto-hidden-save", autoLocal);
-    control.setAttribute("aria-hidden", autoLocal ? "true" : "false");
-    if (autoLocal) control.setAttribute("tabindex", "-1");
-    else if (control.getAttribute("tabindex") === "-1") control.removeAttribute("tabindex");
-  }
-}
-
-function autoLocalEnabled() {
-  return Boolean(metadataState?.enabled || thumbnailState?.enabled);
-}
-
 function syncUi() {
   if (metadataToggle) {
     metadataToggle.checked = Boolean(metadataState?.enabled);
@@ -95,9 +57,10 @@ function syncUi() {
     thumbnailButton.disabled = busy || !thumbnailState?.enabled;
   }
 
-  const autoLocal = autoLocalEnabled();
-  document.body.classList.toggle("filechute-auto-local-save", autoLocal);
-  syncPerItemSaveButtons(autoLocal);
+  document.body.classList.toggle(
+    "filechute-auto-local-save",
+    Boolean(metadataState?.enabled || thumbnailState?.enabled)
+  );
 }
 
 async function refresh() {
@@ -233,13 +196,6 @@ thumbnailButton?.addEventListener("click", () => {
     setStatus(`Generated thumbnails will save automatically to ${handle.name}.`);
   }, "Could not choose a thumbnail folder.");
 });
-
-if (entriesElement) {
-  const observer = new MutationObserver(() => {
-    syncPerItemSaveButtons(autoLocalEnabled());
-  });
-  observer.observe(entriesElement, { childList: true, subtree: true });
-}
 
 void refresh().catch((error) => {
   console.error("Could not initialize FileChute durable storage settings", error);
