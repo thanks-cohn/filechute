@@ -68,21 +68,40 @@
     });
   }
 
+  function visible(element) {
+    if (!(element instanceof Element)) return false;
+    const style = getComputedStyle(element);
+    return style.display !== "none" && style.visibility !== "hidden";
+  }
+
+  function collectInputs(root, result) {
+    if (!root?.querySelectorAll) return;
+    root.querySelectorAll('input[type="file"]').forEach((input) => {
+      if (!input.disabled && !result.includes(input)) result.push(input);
+    });
+    root.querySelectorAll("*").forEach((node) => {
+      if (node.shadowRoot) collectInputs(node.shadowRoot, result);
+    });
+  }
+
   function candidateInputs(target) {
     const result = [];
     const add = (input) => {
       if (input instanceof HTMLInputElement && input.type === "file" && !input.disabled && !result.includes(input)) result.push(input);
     };
+
     if (target instanceof HTMLInputElement) add(target);
     if (target instanceof Element) {
       add(target.closest("label")?.querySelector('input[type="file"]'));
       target.closest("form")?.querySelectorAll('input[type="file"]').forEach(add);
       let parent = target;
-      for (let depth = 0; parent && depth < 5; depth += 1, parent = parent.parentElement) {
+      for (let depth = 0; parent && depth < 6; depth += 1, parent = parent.parentElement) {
         parent.querySelectorAll?.('input[type="file"]').forEach(add);
       }
     }
-    document.querySelectorAll('input[type="file"]').forEach(add);
+    collectInputs(document, result);
+
+    result.sort((a, b) => Number(visible(b)) - Number(visible(a)));
     return result;
   }
 
@@ -101,28 +120,46 @@
     }
   }
 
+  function dragInit(file, originalEvent) {
+    const transfer = new DataTransfer();
+    transfer.effectAllowed = "copy";
+    transfer.items.add(file);
+    return {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      dataTransfer: transfer,
+      clientX: originalEvent.clientX,
+      clientY: originalEvent.clientY,
+      screenX: originalEvent.screenX,
+      screenY: originalEvent.screenY
+    };
+  }
+
   function dispatchDrop(target, file, originalEvent) {
     if (!(target instanceof EventTarget)) return false;
     try {
-      const transfer = new DataTransfer();
-      transfer.effectAllowed = "copy";
-      transfer.items.add(file);
-      const init = {
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-        dataTransfer: transfer,
-        clientX: originalEvent.clientX,
-        clientY: originalEvent.clientY,
-        screenX: originalEvent.screenX,
-        screenY: originalEvent.screenY
-      };
-      target.dispatchEvent(new DragEvent("dragenter", init));
-      target.dispatchEvent(new DragEvent("dragover", init));
-      target.dispatchEvent(new DragEvent("drop", init));
+      target.dispatchEvent(new DragEvent("dragenter", dragInit(file, originalEvent)));
+      target.dispatchEvent(new DragEvent("dragover", dragInit(file, originalEvent)));
+      target.dispatchEvent(new DragEvent("drop", dragInit(file, originalEvent)));
       return true;
     } catch {
       return false;
+    }
+  }
+
+  function clearPageDropState(target, originalEvent) {
+    const targets = [target, document.body, document.documentElement].filter((item, index, list) => item && list.indexOf(item) === index);
+    for (const item of targets) {
+      try {
+        item.dispatchEvent(new DragEvent("dragleave", {
+          bubbles: true,
+          cancelable: false,
+          composed: true,
+          clientX: originalEvent.clientX,
+          clientY: originalEvent.clientY
+        }));
+      } catch {}
     }
   }
 
@@ -140,22 +177,30 @@
     if (!response?.ok) throw new Error(response?.error || "FileChute could not read that file.");
 
     const file = base64File(response);
-    const input = candidateInputs(event.target).find((candidate) => inputAccepts(candidate, file));
+    const inputs = candidateInputs(event.target).filter((candidate) => inputAccepts(candidate, file));
+    const input = inputs[0];
+
     if (input && assignFile(input, file)) {
+      clearPageDropState(event.target, event);
       showToast(`Sent ${file.name} to this page.`);
       return;
     }
 
     if (dispatchDrop(event.target, file, event)) {
+      clearPageDropState(event.target, event);
       showToast(`Dropped ${file.name} into this page.`);
       return;
     }
 
+    clearPageDropState(event.target, event);
     throw new Error("This page does not expose a compatible file upload target.");
   }
 
   document.addEventListener("dragover", (event) => {
     if (![...(event.dataTransfer?.types || [])].includes(FILECHUTE_DRAG_TYPE)) return;
+    // Allow FileChute's drop while still letting the page's own dragover
+    // listeners run. Pages such as ChatGPT use those listeners to manage their
+    // visible drop overlay.
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
   }, true);
@@ -163,13 +208,16 @@
   document.addEventListener("drop", (event) => {
     const payload = parsePayload(event.dataTransfer);
     if (!payload) return;
+
+    // Prevent browser navigation/default handling, but intentionally do NOT
+    // stop propagation. The target page must receive its own drop lifecycle so
+    // it can dismiss overlays and reset drag UI normally.
     event.preventDefault();
-    event.stopImmediatePropagation();
+
     void receive(payload, event).catch((error) => {
+      clearPageDropState(event.target, event);
       console.error("FileChute website handoff failed", error);
       showToast(error?.message || "Could not send that FileChute file to this page.", true);
     });
   }, true);
-
-  showToast("FileChute drop bridge ready on this page.");
 })();
