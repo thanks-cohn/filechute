@@ -1,3 +1,4 @@
+import "./chatgpt-image-drop-fallback.js";
 import "./google-image-drop-fallback.js";
 
 const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
@@ -142,9 +143,6 @@ document.addEventListener("drop", (event) => {
   event.preventDefault();
   event.stopImmediatePropagation();
 
-  // permissions.request must be initiated while the original physical drop
-  // still carries user activation. Only exact candidate image hosts are asked
-  // for, and FileChute keeps broad host access optional.
   const origins = permissionOrigins(clone);
   let permission = Promise.resolve(true);
   if (origins.length) {
