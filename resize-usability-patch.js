@@ -148,10 +148,10 @@ async function openClosestSystemLocation(row) {
     throw error;
   }
 
-  // A normal Chromium extension cannot launch Dolphin or reveal/select an
-  // arbitrary local file. The File System Access API also intentionally does
-  // not expose an absolute OS path. The closest dependency-free system UI is
-  // the native open-file picker, started directly inside the target folder.
+  // Chromium does not expose an absolute OS path for a FileSystemHandle, so a
+  // dependency-free extension cannot launch Dolphin or reveal/select the file
+  // there. The closest system UI is the native open-file picker, started in
+  // the exact resized/ parent directory.
   if (typeof window.showOpenFilePicker === "function") {
     try {
       setStatus(`Opening the system file picker at ${[resolved.root.name, ...resolved.targetParts].join("/")}…`);
@@ -167,10 +167,8 @@ async function openClosestSystemLocation(row) {
       });
       return;
     } catch (error) {
-      if (error?.name !== "AbortError" && error?.name !== "NotAllowedError") throw error;
-      // Cancel or an unavailable native picker falls through to FileChute's
-      // own folder navigation instead of blanking/reloading the panel.
       if (error?.name === "AbortError") return;
+      console.debug("Native picker unavailable; opening resized/ inside FileChute instead", error);
     }
   }
 
