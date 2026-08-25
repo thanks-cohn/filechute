@@ -9,7 +9,7 @@ const IMAGE_EXTENSIONS = new Set([
   "jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "ico", "apng"
 ]);
 
-let viewMode = "browse";
+let viewMode = "all";
 let directoryPosition = "top";
 
 function rootNameFromBreadcrumbs() {
@@ -70,11 +70,11 @@ style.dataset.filechuteDirectoryVisibility = "true";
 style.textContent = `
   /* Directories are first-class FileChute objects and never participate in
      the 50-file page count. Their placement is a user preference. */
-  #entries[data-filechute-view-mode="browse"][data-filechute-directory-position="top"] > .entry.directory {
+  #entries[data-filechute-view-mode="all"][data-filechute-directory-position="top"] > .entry.directory {
     display: grid !important;
     order: -100000 !important;
   }
-  #entries[data-filechute-view-mode="browse"][data-filechute-directory-position="bottom"] > .entry.directory {
+  #entries[data-filechute-view-mode="all"][data-filechute-directory-position="bottom"] > .entry.directory {
     display: grid !important;
     order: 100000 !important;
   }
@@ -87,7 +87,7 @@ style.textContent = `
 document.head.append(style);
 
 async function initializeViewPolicy() {
-  viewMode = (await readStored(VIEW_MODE_KEY)) === "images" ? "images" : "browse";
+  viewMode = (await readStored(VIEW_MODE_KEY)) === "images" ? "images" : "all";
   directoryPosition = (await readStored(DIRECTORY_POSITION_KEY)) === "bottom" ? "bottom" : "top";
   disableAutomaticFolderDive();
   applyViewPolicy();
