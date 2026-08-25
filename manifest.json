@@ -60,6 +60,8 @@
         "pagination.css",
         "settings-media.css",
         "sidepanel.js",
+        "shelf-live-refresh.js",
+        "single-destination-drop.js",
         "ui-enhancements.js",
         "directory-visibility.js",
         "drop-feedback.js",
