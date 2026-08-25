@@ -1,3 +1,5 @@
+import "./google-image-drop-fallback.js";
+
 const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
 const CHUTE_DRAG_TYPE = "application/x-chute-item";
 const FRAMECHUTE_DRAG_TYPE = "application/x-framechute-item+json";
