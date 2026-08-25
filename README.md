@@ -1,76 +1,311 @@
 # FileChute
 
-**Your files, beside the browser.**
+## Your files, beside the browser.
 
-FileChute is a local-first Chromium file companion built around one simple idea: **move something between the web and the exact local folder you want without detouring through Save As, Downloads, or a separate file manager.**
+> **The local file shelf Chromium somehow forgot to have.**
+>
+> Choose a folder once. Keep it beside every tab. Drag things **from the web into that folder**, and drag the real files **back out into the web** when you need them.
 
-Current release: **v0.1.34**
+**Current release: v0.1.34**
 
-FileChute runs as a Chromium side panel, works with a user-selected local directory, keeps normal file handling local, and adds browser-aware drag/drop behavior for places where ordinary browser drags are unreliable.
+FileChute is built for the little *ohhh* moment:
 
-## The idea
+> **Wait. Why has the browser not always worked like this?**
 
-```text
-web image / media
-        ↓
-     FileChute
-        ↓
- exact local folder
-```
+No constant **Save As**. No wandering through **Downloads**. No opening a separate file manager just to find the image you were looking at five seconds ago. No cloud account required just to move a local file around.
 
-and in the other direction:
+FileChute turns a folder you choose into a persistent browser shelf.
 
 ```text
-local file
-    ↓
-FileChute
-    ↓
-browser target / Chute / FrameChute
+WEB                                      YOUR FOLDER
+image / media / file                     beside the browser
+        │                                       ▲
+        └────────────── drag ──────────────────┘
+
+YOUR FOLDER                              WEB
+real local file                          upload / image target
+        │                                       ▲
+        └────────────── drag ──────────────────┘
 ```
 
-FileChute is not a cloud drive and does not scan the whole computer. It works with the folder the user explicitly chooses through Chromium's filesystem permission model.
+That is the idea.
+
+And once it is there, it feels weirdly obvious.
+
+---
+
+## The 10-second version
+
+1. Open FileChute.
+2. Choose a local folder.
+3. Browse normally.
+4. See something you want? **Drag it into FileChute.**
+5. Need one of your files on a website? **Drag it back out.**
+
+Your chosen folder stays beside the browser while you move between tabs.
+
+**Google Images → FileChute**  
+**Yandex Images → FileChute**  
+**ChatGPT images → FileChute**  
+**FileChute → compatible upload and image-search targets**
+
+And under all of that is one rule:
+
+> **If FileChute has the real file, move the real file.**
+
+Not a fake filename. Not a stale URL. Not a browser-generated shell pretending to be your image.
+
+---
 
 ## Why FileChute exists
 
-Browsers already have download shelves, upload pickers, side panels, bookmarks, cloud-drive integrations, local-file editors, local-link launchers, and web-content collectors. Those are useful neighboring ideas, but the basic act of keeping a **real user-selected local folder permanently beside the browser and moving real files in both directions** has remained strangely awkward.
+Browsers already have download shelves, upload pickers, side panels, bookmarks, cloud-drive integrations, web clippers, local-file editors, and file managers.
 
-FileChute is built around the feeling that this should have existed a long time ago.
+But the basic thing is still strangely awkward:
 
-The browser already knows how to show a side panel. It already knows how to ask permission for a folder. It already knows what a file is. It already knows how to drag something. FileChute tries to make those pieces feel like one continuous workflow instead of unrelated systems.
+> **Keep one real local folder permanently beside the browser and move files through it in both directions.**
 
-## Main features
+There are neighboring tools that solve pieces of this problem. Some collect web content. Some stage uploads. Some open local links. Some route everything through Downloads. Some rely on cloud storage or desktop helpers.
 
-FileChute currently provides:
+FileChute starts somewhere simpler:
 
-- persistent Chromium side-panel file browsing
-- explicit local root-folder selection
-- directory navigation with back, home, breadcrumbs, search, and copyable locations
-- direct browser-to-folder drag/drop
-- direct drops onto visible child directories
-- image, video, directory, and other-file visibility controls
+> **Your folder is the shelf.**
+
+The browser already knows how to show a side panel. It already knows how to ask you for access to a folder. It already knows what a file is. It already knows how to drag something.
+
+FileChute joins those pieces into one continuous workflow.
+
+It feels less like adding a new system and more like uncovering something that should have existed years ago.
+
+---
+
+## ✨ What FileChute can do
+
+### Keep a real local folder beside every tab
+
+Choose a root folder and FileChute turns it into a persistent Chromium side panel.
+
+You get:
+
+- child-directory browsing
+- back and home navigation
+- breadcrumbs
+- search
+- copyable relative locations
 - configurable directory placement
-- pagination or whole-directory listing
-- local image thumbnails
-- local browser-decodable video poster frames
-- original-file dragging
-- configurable thumbnail dragging
-- local metadata/provenance tracking
-- optional external metadata and thumbnail mirrors
-- Google Images → FileChute support
-- Yandex Images → FileChute support
-- ChatGPT image → FileChute support
-- FileChute → compatible browser upload/image-search targets
-- Chute / FrameChute interoperability
-- local image resizing into a `resized/` folder
-- width-only or height-only aspect-preserving resize
-- exact-canvas fill behavior
-- default or per-image fill colors
-- numbered output files that preserve the original
-- direct navigation into `resized/`
-- redundant `resized` navigation hidden while already inside that directory
-- repeated-drag lifecycle hardening for long browser sessions
+- paged listing or whole-directory listing
+- independent visibility controls for images, videos, directories, and other files
+- media-focused presets
 
-## Simple install
+The shelf stays available while you browse.
+
+### Drop browser content directly where you want it
+
+Drop onto the ordinary FileChute area to save into the folder currently open in the shelf.
+
+Or drop directly onto a visible child directory to save **inside that directory**.
+
+That means you can go from:
+
+```text
+I want this image
+```
+
+to:
+
+```text
+it is now in THIS folder
+```
+
+without the usual Downloads detour.
+
+### Drag your real local files back into the browser
+
+FileChute can drag local files outward into compatible browser destinations.
+
+When Chromium gives FileChute an actual local `File`, FileChute prioritizes the binary file itself rather than letting a stale filename, relative path, or source URL become the primary thing the destination sees.
+
+That matters because modern web pages can inspect several drag representations at once and occasionally choose the wrong one.
+
+FileChute's rule stays intentionally simple:
+
+> **Real file available → send the real file.**
+
+### Work with awkward image sources
+
+Modern image-search and web-app interfaces often do not expose a neat ordinary file drag.
+
+What looks like an image may actually be represented by:
+
+- a thumbnail
+- a redirect URL
+- a temporary resource
+- a page-owned blob
+- hidden metadata
+- an overlay or wrapper
+- a browser-generated drag shell
+- a phantom `Files` type with no usable file behind it
+
+FileChute includes targeted recovery logic for:
+
+- **Google Images**
+- **Yandex Images**
+- **ChatGPT image surfaces**
+
+You still perform the drag. FileChute's job is to preserve enough information for that explicit transfer to survive the browser boundary.
+
+### Resize images without leaving the shelf
+
+Compatible images have a local **Resize** action.
+
+The original is preserved. Resized copies go into a nearby `resized/` directory.
+
+```text
+Media/
+  photo.jpg
+  resized/
+    photo-1.jpg
+    photo-2.jpg
+    photo-3.jpg
+```
+
+Resize features include:
+
+- width-only resize
+- height-only resize
+- automatic aspect-ratio calculation
+- explicit width + height
+- exact-canvas output
+- proportional fitting
+- optional fill
+- default fill color
+- per-image fill color
+- **Do not fill** mode
+- numbered outputs instead of destructive overwrites
+- direct navigation into `resized/`
+- automatic hiding of the redundant `resized` navigation button while already inside that directory
+
+If you are already inside `resized/`, FileChute keeps new resized outputs there instead of creating the absurd `resized/resized/`.
+
+### Generate useful local previews
+
+FileChute can generate:
+
+- local image thumbnails
+- browser-decodable video poster frames
+
+But a thumbnail is only a preview.
+
+> **The original file is the normal thing FileChute moves.**
+
+Thumbnail generation stays local. Thumbnail storage can stay browser-managed or optionally be mirrored into a folder you choose.
+
+### Keep provenance when available
+
+FileChute can retain useful source information such as:
+
+```text
+sourceUrl
+parentPageUrl
+```
+
+That provenance can remain in browser-managed extension storage or optionally be mirrored to a local metadata folder.
+
+The media itself does not need to be modified just to remember where it came from.
+
+---
+
+## 🛠️ v0.1.34: the repeated-drag reliability release
+
+This release includes the accumulated FileChute workflow, but its most important engineering work is less flashy:
+
+> **making repeated drags keep working.**
+
+The failure pattern was nasty:
+
+```text
+1. drag works
+2. drag works
+3. drag works
+4. maybe Google works
+5. maybe Yandex works
+6. the hand/grab cursor still appears...
+7. ...but the file is no longer really being picked up
+```
+
+Sometimes a destination briefly showed the image and then made it disappear. Sometimes closing and reopening FileChute mysteriously brought everything back.
+
+That pointed to stale cross-context drag state and unreliable Chromium handoff behavior rather than simple CPU or RAM exhaustion.
+
+v0.1.34 hardens that path in several ways:
+
+- every outbound drag gets a fresh `File` wrapper
+- real file data is inserted before richer FileChute interoperability metadata
+- stale shelf drag state is cleared across several lifecycle exit paths
+- FileChute no longer depends on one perfectly delivered native `dragend`
+- a watchdog can recover a drag session Chromium failed to finish cleanly
+- Chromium's `Files` type is treated as a hint, not proof that a usable file survived the extension → page boundary
+- when `Files` is advertised but no real file arrives, FileChute can fall back to its page bridge
+- compatible upload inputs near the physical drop target are preferred over unrelated hidden inputs elsewhere on a complex page
+- aggressive duplicate shelf-refresh work was removed so directory scanning does not fight the drag interaction
+
+In normal language:
+
+> **FileChute is much harder to confuse now.**
+
+---
+
+## Google Images → FileChute
+
+Google image drags are not always ordinary file drags.
+
+A result can expose a preview URL, redirect, nested source, lazy-loaded image, temporary resource, or browser shell instead of straightforward image bytes.
+
+FileChute captures useful source information while the drag still belongs to the Google page and can use that information when needed to recover the image the user actually selected.
+
+---
+
+## Yandex Images → FileChute
+
+Yandex can keep useful image information in preview metadata, data attributes, nested URL parameters, result links, and page-owned resources.
+
+FileChute supports common Yandex image-search domains and captures candidate source information before the drag leaves the page.
+
+This is also where v0.1.34's destination-target improvements matter. A complicated page can contain several hidden file inputs, and sending a file to the wrong one can create the extremely convincing illusion that the image was accepted for half a second before disappearing.
+
+FileChute now prefers compatible targets close to where you actually dropped.
+
+---
+
+## ChatGPT images → FileChute
+
+ChatGPT image interfaces can involve wrappers, overlays, temporary URLs, blobs, picture elements, or page-owned resources rather than one simple permanent image URL.
+
+FileChute includes targeted support for dragging from ChatGPT image surfaces into your chosen local folder.
+
+Its outbound page fallback also avoids intentionally reattaching unrelated stale files when you drag a new one into a destination.
+
+---
+
+## Strange filenames are not necessarily broken images
+
+Some image services generate names resembling:
+
+```text
+(m=qK725YYbeaSaaTbaAaaaa)(mh=umkpEJFgSpBD4Nbw)0.jpg
+```
+
+Hideous? Absolutely.
+
+Necessarily a broken JPEG? Nope.
+
+FileChute separates **whether the bytes are valid** from **whether the remote service supplied a civilized filename**.
+
+And when dragging outward, arbitrary filenames and relative paths are not deliberately masqueraded as URLs.
+
+---
+
+## 🚀 Simple install
 
 ### 1. Clone FileChute
 
@@ -88,15 +323,13 @@ git pull --ff-only origin main
 
 ### 2. Open Chrome extensions
 
-Open:
-
 ```text
 chrome://extensions
 ```
 
-### 3. Turn on Developer mode
+### 3. Enable Developer mode
 
-Enable **Developer mode**.
+Turn on **Developer mode**.
 
 ### 4. Load FileChute
 
@@ -104,11 +337,15 @@ Choose **Load unpacked** and select the FileChute repository directory.
 
 ### 5. Open FileChute
 
-Click the FileChute toolbar icon. The FileChute side panel opens beside the browser.
+Click the FileChute toolbar icon.
 
-Choose the local folder you want FileChute to use. That folder becomes FileChute's working root.
+Choose the local folder you want to keep beside the browser.
 
-FileChute does not gain arbitrary access to unrelated folders simply because the extension is installed.
+That's it.
+
+You now have a local file shelf living next to your tabs.
+
+---
 
 ## Updating an unpacked build
 
@@ -117,201 +354,42 @@ cd ~/dev/filechute
 git pull --ff-only origin main
 ```
 
-Then reload FileChute in:
+Then reload FileChute at:
 
 ```text
 chrome://extensions
 ```
 
-During development, an unpacked extension reload invalidates old content-script contexts in pages that were already open. FileChute includes a bridge re-seeding mechanism, but when testing a changed browser integration it is still sensible to refresh already-open Google, Yandex, or ChatGPT tabs once after reloading the extension.
+During development, reloading an unpacked extension can invalidate old content-script contexts on pages that were already open. FileChute includes bridge re-seeding, but when testing changed Google, Yandex, or ChatGPT integrations it is still sensible to refresh those already-open tabs once after reloading the extension.
 
-## Choosing and remembering a folder
+A normal installed Web Store build is not manually reloaded this way during ordinary use.
 
-FileChute uses Chromium's filesystem handle model.
+---
 
-The user explicitly chooses a directory. FileChute remembers the logical handle in browser-local extension storage so the same root can be restored later when Chromium still grants access.
-
-Chromium remains the authority over filesystem permission. It may revoke or forget a grant after a browser/profile change. If that happens, FileChute can remember which logical folder was selected and ask the user to reconnect it.
-
-Chromium intentionally does not expose arbitrary raw absolute operating-system paths from a normal browser filesystem handle, so FileChute does not pretend to have unrestricted desktop filesystem access.
-
-## Browsing folders
-
-FileChute provides:
-
-- child-directory rows
-- breadcrumbs
-- back navigation
-- home navigation
-- search
-- copyable relative locations
-- configurable directory placement
-- paged listing
-- whole-directory listing
-- media visibility presets and independent type controls
-
-The shelf stays available while browsing other tabs, so the selected folder remains beside the browser workflow.
-
-## Drop directly into a directory
-
-A browser resource can be dropped into:
-
-- the ordinary FileChute file area, which targets the currently open directory
-- a visible child-directory row, which targets that specific directory
-
-FileChute gives target feedback so the destination remains visible during the drop.
-
-## Google Images → FileChute
-
-Google image-search drags are not always ordinary file drags. A drag may expose a preview, redirect URL, browser-generated shell, thumbnail URL, temporary resource, or phantom file flavor rather than straightforward image bytes.
-
-FileChute captures useful source information while the drag still belongs to the Google page and can use that information to recover the image selected by the user.
-
-## Yandex Images → FileChute
-
-FileChute supports common Yandex image-search domains and handles the fact that Yandex can keep useful image information in preview metadata, nested URL parameters, data attributes, result links, or page-owned resources.
-
-The user still performs the drag. FileChute's job is to preserve enough context for that explicit transfer to survive the browser boundary.
-
-## ChatGPT images → FileChute
-
-FileChute supports dragging images from ChatGPT conversations and image surfaces where the visible image may be represented by wrappers, overlays, temporary resources, picture elements, or page-owned blobs rather than one simple permanent URL.
-
-## FileChute → browser: move the real file
-
-The outbound rule is intentionally simple:
-
-> **If FileChute has the real file, move the real file.**
-
-When FileChute has an actual local `File`, it prioritizes that binary file rather than allowing a stale filename, relative path, or source URL to become the primary thing a website sees.
-
-URL fallbacks are accepted only when they are legitimate web URLs. Filenames such as browser/CDN-generated `(m=...)(mh=...)0.jpg` names remain filenames rather than being misrepresented as links.
-
-## v0.1.34: repeated drag reliability
-
-v0.1.34 is primarily a long-session drag reliability release.
-
-The failure pattern being addressed was specific: several FileChute → Google/Yandex/ChatGPT drags could succeed, then the shelf cursor could still show a grab/open-hand interaction while the file itself was no longer truly being picked up. Closing and reopening the shelf restored operation.
-
-That pointed to stale cross-context drag state rather than simple CPU or RAM exhaustion.
-
-v0.1.34 hardens the flow in several ways:
-
-- every outbound drag receives a fresh `File` wrapper
-- real file data is inserted before richer FileChute interoperability metadata
-- stale shelf drag state is cleared across multiple lifecycle exit paths instead of trusting one perfect native `dragend`
-- a watchdog can reset a drag session that Chromium fails to finish cleanly
-- Chromium's `Files` drag type is treated as advisory rather than proof that an actual file survived the extension→page boundary
-- when a page reports `Files` but exposes no usable `File`, FileChute can use its browser-page fallback bridge
-- compatible file inputs near the physical drop target are preferred over unrelated hidden inputs elsewhere on the page
-
-This is designed to prevent cases where a site briefly appears to accept an image and then discards it, or where FileChute works for a few drags and then appears to stop picking files up.
-
-## Image resizing
-
-Compatible images have a local **Resize** action.
-
-FileChute preserves the original and writes resized outputs into a nearby `resized/` directory.
-
-Example:
-
-```text
-Media/
-  picture.jpg
-  resized/
-    picture-1.jpg
-    picture-2.jpg
-```
-
-If the image is already inside `resized/`, FileChute keeps subsequent outputs there instead of creating `resized/resized/`.
-
-### Aspect ratio
-
-With aspect ratio enabled, the user can enter:
-
-- width only
-- height only
-- width and height
-
-When only one dimension is supplied, FileChute calculates the other from the original aspect ratio.
-
-With aspect preservation disabled, both dimensions are required.
-
-### Fill behavior
-
-When a preserved-aspect image must fit an exact output canvas, FileChute can fit the image proportionally and fill unused space.
-
-The user can choose a default fill color, override it per image, or choose **Do not fill** so the output follows the proportional dimensions instead of padding the canvas.
-
-The default fill color is black unless changed.
-
-### Output filenames
-
-Resized files are numbered rather than destructively overwriting earlier work:
-
-```text
-picture-1.jpg
-picture-2.jpg
-picture-3.jpg
-```
-
-### `resized/` navigation
-
-The small `📁 resized` action navigates directly into the matching folder inside FileChute. When the user is already browsing `resized/`, that redundant navigation action is hidden while Resize itself remains available.
-
-## Local thumbnails
-
-FileChute can generate local image thumbnails and browser-decodable video poster frames.
-
-The distinction is important:
-
-> **A thumbnail is a preview. The original file is the normal thing being moved.**
-
-Thumbnail storage can remain browser-managed or optionally be mirrored into a user-selected local directory.
-
-## Metadata and provenance
-
-FileChute can keep local provenance information when available, for example:
-
-```text
-sourceUrl
-parentPageUrl
-```
-
-This keeps useful context without modifying the original image bytes.
-
-Metadata can stay in browser-managed extension storage or optionally be mirrored into a user-selected local folder.
-
-## Chute and FrameChute
-
-FileChute participates in a broader local-first browser workflow:
-
-```text
-FileChute  = find, receive, file, and supply it
-Chute      = hold it
-FrameChute = arrange and play it
-```
-
-FileChute exposes custom drag metadata for richer interoperability while continuing to prefer real `File` objects for ordinary browser destinations.
-
-## Privacy
+## Privacy: local first on purpose
 
 FileChute is deliberately local-first.
 
 - no FileChute cloud account required
 - no whole-machine scan
-- the user explicitly selects the accessible root
+- you explicitly choose the accessible root folder
 - normal local browsing stays local
 - image resizing stays local
 - thumbnail generation stays local
-- settings and transfer state stay in browser-managed extension storage
-- metadata stays browser-local unless the user opts into a local mirror
-- thumbnail storage stays browser-local unless the user opts into a local mirror
-- a file is handed to a website only when the user deliberately performs that transfer
+- settings and temporary transfer state stay in browser-managed extension storage
+- metadata stays browser-local unless you opt into a local mirror
+- thumbnail storage stays browser-local unless you opt into a local mirror
+- a file is handed to a website when **you deliberately perform that transfer**
 
-See **[PRIVACY.md](PRIVACY.md)** for the repository privacy policy.
+FileChute does not gain arbitrary access to unrelated folders just because it is installed.
 
-## Manifest and permissions
+Chromium remains in control of filesystem permissions and may require you to reconnect a remembered folder if a grant is lost or revoked.
+
+See **[PRIVACY.md](PRIVACY.md)** for the full repository privacy policy.
+
+---
+
+## Manifest V3 and permissions
 
 FileChute is a Manifest V3 extension.
 
@@ -322,52 +400,84 @@ The current build uses:
 - `scripting`
 - `sidePanel`
 
-Targeted content scripts support user-initiated drag recovery on ChatGPT, Google, and Yandex. Optional host access exists for browser-resource handling when needed by a feature.
+Targeted content scripts support user-initiated drag recovery on ChatGPT, Google, and Yandex. Optional host access exists for browser-resource handling when a feature needs it.
 
-The intent is to keep permissions tied to FileChute's single purpose: **moving user-selected files between the user's chosen local folder and browser destinations.**
+The intent is to keep every permission tied to one purpose:
+
+> **moving user-selected files between the user's chosen local folder and browser destinations.**
+
+---
+
+## FileChute + Chute + FrameChute
+
+FileChute also participates in a broader local-first browser workflow:
+
+```text
+FileChute  = find, receive, file, and supply it
+Chute      = hold it
+FrameChute = arrange and play it
+```
+
+FileChute exposes richer custom drag metadata for Chute / FrameChute interoperability while still preferring real `File` objects for ordinary browser destinations.
+
+---
 
 ## Chrome Web Store preparation
 
-Store listing copy, permission rationale, privacy disclosure guidance, reviewer test steps, screenshot suggestions, and packaging commands are maintained in:
+The repository includes store-ready material for the v0.1.34 release candidate:
+
+- extension icons at 16 / 48 / 128 px
+- MV3 manifest
+- privacy policy
+- permission rationale
+- single-purpose statement
+- reviewer instructions
+- screenshot suggestions
+- packaging guidance
+- release notes
+
+See:
 
 **[CHROME_WEB_STORE.md](CHROME_WEB_STORE.md)**
 
-The verbose v0.1.34 release/tag notes are maintained in:
+and the verbose release/tag notes:
 
 **[RELEASE_NOTES_v0.1.34.md](RELEASE_NOTES_v0.1.34.md)**
+
+---
 
 ## Troubleshooting
 
 ### The hand/grab cursor appears but files stop leaving the shelf
 
-Confirm you are running **v0.1.34 or newer**. v0.1.34 adds fresh per-drag file wrappers, stale-state cleanup, a drag watchdog, phantom-`Files` detection, and browser-page fallback handling specifically for repeated outbound transfers.
+Use **v0.1.34 or newer**. This release adds fresh per-drag file wrappers, stale-state cleanup, a drag watchdog, phantom-`Files` detection, target ranking, and browser-page fallback handling specifically for repeated transfers.
 
-### A destination briefly shows the image and then loses it
+### A destination briefly shows an image and then loses it
 
-This can happen when Chromium advertises `Files` but the destination receives no usable file, or when a complex page routes the drop to the wrong internal input. v0.1.34 adds actual-file detection plus closer-target ranking before fallback injection.
+A complex page may have received a phantom `Files` drag or routed the file to the wrong internal input. v0.1.34 checks for an actual usable file and prefers compatible inputs close to the physical drop target.
 
 ### `Extension context invalidated`
 
-This usually means an unpacked development extension was reloaded while the page still contained an older content-script context. Reload FileChute and refresh the affected page once.
+This usually means an unpacked development build was reloaded while the page still contained an older extension-script context. Reload FileChute and refresh the affected page once.
 
 ### FileChute cannot write to the selected folder
 
-Chromium may have forgotten the filesystem grant. Use FileChute's reconnect/choose-folder flow and grant access again.
+Chromium may have forgotten or revoked the filesystem grant. Reconnect or choose the folder again and grant access.
 
 ### `resized/` does not exist
 
-The directory is created when the first resized copy is written.
+It is created when the first resized copy is written.
 
-## Development philosophy
+---
 
-FileChute intentionally avoids requiring a native desktop helper for ordinary operation.
+## The philosophy
 
-That keeps installation closer to a normal browser extension and preserves the browser's permission boundary.
+There should be almost no perceptible distance between wanting a file and reaching it.
 
-The project is built around one recurring rule:
+For FileChute, that becomes:
 
-> **There should be almost no perceptible distance between wanting a file and reaching it.**
+> **See it. Drag it. Have it.**
 
-For FileChute, that becomes even simpler:
+And even simpler:
 
-> **Your files, beside the browser.**
+# **Your files, beside the browser.**
