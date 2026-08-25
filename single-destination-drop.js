@@ -38,8 +38,28 @@ function customProtocol(transfer) {
   return types.includes(FILECHUTE_DRAG_TYPE) || types.includes(CHUTE_DRAG_TYPE) || types.includes(FRAMECHUTE_DRAG_TYPE);
 }
 
-function hasFileItems(transfer) {
-  return Boolean(transfer && [...(transfer.items || [])].some((item) => item.kind === "file"));
+function hasConcreteFileItems(transfer) {
+  if (!transfer) return false;
+
+  for (const file of [...(transfer.files || [])]) {
+    if (file instanceof File && file.size > 0) return true;
+  }
+
+  for (const item of [...(transfer.items || [])]) {
+    if (item.kind !== "file") continue;
+    try {
+      const entry = item.webkitGetAsEntry?.();
+      if (entry?.isDirectory) return true;
+    } catch {}
+    try {
+      const file = item.getAsFile?.();
+      if (file instanceof File && file.size > 0) return true;
+    } catch {}
+  }
+
+  // Browser image-search drags often advertise a zero-byte pseudo-file. Those
+  // must be left to the Google/Yandex/ChatGPT URL/page-resource fallbacks.
+  return false;
 }
 
 async function rootWithWritePermission() {
@@ -160,7 +180,7 @@ async function receiveOnce(transfer, targetPathNames) {
     return { files, folders };
   }
 
-  const incoming = [...(transfer?.files || [])].filter((file) => file instanceof File && file.size >= 0);
+  const incoming = [...(transfer?.files || [])].filter((file) => file instanceof File && file.size > 0);
   let files = 0;
   for (const file of incoming) {
     await writeFile(directory, file, file.name);
@@ -178,17 +198,17 @@ function destinationLabel(pathNames) {
 
 document.addEventListener("dragover", (event) => {
   const transfer = event.dataTransfer;
-  if (!transfer || customProtocol(transfer) || !hasFileItems(transfer)) return;
+  if (!transfer || customProtocol(transfer) || !hasConcreteFileItems(transfer)) return;
   event.preventDefault();
   if (transfer) transfer.dropEffect = "copy";
 }, true);
 
 document.addEventListener("drop", (event) => {
   const transfer = event.dataTransfer;
-  if (!transfer || customProtocol(transfer) || !hasFileItems(transfer) || dropBusy) return;
+  if (!transfer || customProtocol(transfer) || !hasConcreteFileItems(transfer) || dropBusy) return;
 
-  // Claim native/binary file drops before the older browser fallbacks. Exactly
-  // one destination is chosen from the pointer: a hovered subdirectory, or the
+  // Claim a real binary/native drop before the older fallbacks. Exactly one
+  // destination is chosen from the pointer: a hovered subdirectory, or the
   // currently open FileChute directory. Never copy the same drop to both.
   event.preventDefault();
   event.stopImmediatePropagation();
@@ -199,6 +219,7 @@ document.addEventListener("drop", (event) => {
 
   void receiveOnce(transfer, targetPathNames)
     .then(({ files, folders }) => {
+      if (!files && !folders) throw new Error("That drop did not contain a readable local file.");
       const fileText = `${files} file${files === 1 ? "" : "s"}`;
       const folderText = folders ? ` and ${folders} folder${folders === 1 ? "" : "s"}` : "";
       setStatus(`Copied ${fileText}${folderText} into ${target}.`);
