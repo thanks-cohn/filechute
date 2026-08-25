@@ -1,6 +1,7 @@
 import { readStored, writeStored, removeStored } from "./storage.js";
 
 const EXTERNAL_HANDLE_KEY = "metadata-directory-handle";
+const CHOICE_KEY = "filechute-metadata-storage-choice";
 const CACHE_KEY = "metadata-cache-v1";
 const EXTERNAL_FILENAME = "filechute-metadata.json";
 const FORMAT_VERSION = 1;
@@ -28,7 +29,7 @@ function normalizeDocument(value) {
 async function queryPermission(handle, mode = "readwrite") {
   if (!handle) return false;
   try {
-    if ((await handle.queryPermission({ mode })) === "granted") return true;
+    return (await handle.queryPermission({ mode })) === "granted";
   } catch {}
   return false;
 }
@@ -43,9 +44,20 @@ async function requestPermission(handle, mode = "readwrite") {
   }
 }
 
+async function localMirrorEnabled(storedHandle = null) {
+  const choice = await readStored(CHOICE_KEY);
+  if (choice === "external") return true;
+  if (choice === "browser") return false;
+  return Boolean(storedHandle);
+}
+
+export async function setExternalMetadataEnabled(enabled) {
+  await writeStored(CHOICE_KEY, enabled ? "external" : "browser");
+}
+
 export async function getExternalMetadataDirectory({ request = false } = {}) {
   const handle = await readStored(EXTERNAL_HANDLE_KEY);
-  if (!handle) return null;
+  if (!handle || !(await localMirrorEnabled(handle))) return null;
   const ok = request ? await requestPermission(handle) : await queryPermission(handle);
   return ok ? handle : null;
 }
@@ -54,12 +66,18 @@ export async function chooseExternalMetadataDirectory() {
   const handle = await window.showDirectoryPicker({ mode: "readwrite" });
   if (!handle) return null;
   if (!(await requestPermission(handle))) return null;
-  await writeStored(EXTERNAL_HANDLE_KEY, handle);
+  await Promise.all([
+    writeStored(EXTERNAL_HANDLE_KEY, handle),
+    writeStored(CHOICE_KEY, "external")
+  ]);
   return handle;
 }
 
 export async function forgetExternalMetadataDirectory() {
-  await removeStored(EXTERNAL_HANDLE_KEY);
+  await Promise.all([
+    removeStored(EXTERNAL_HANDLE_KEY),
+    writeStored(CHOICE_KEY, "browser")
+  ]);
 }
 
 async function readExternalDocument(directory) {
@@ -137,10 +155,21 @@ export async function mergeMetadata(key, patch) {
 
 export async function externalMetadataStatus() {
   const stored = await readStored(EXTERNAL_HANDLE_KEY);
-  if (!stored) return { configured: false, available: false, name: null };
+  const enabled = await localMirrorEnabled(stored);
+  if (!stored) {
+    return {
+      enabled,
+      configured: false,
+      available: false,
+      name: null,
+      handle: null
+    };
+  }
   return {
+    enabled,
     configured: true,
     available: await queryPermission(stored),
-    name: stored.name || "Metadata folder"
+    name: stored.name || "Metadata folder",
+    handle: stored
   };
 }

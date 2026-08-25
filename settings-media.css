@@ -34,3 +34,10 @@
   font-size: 11px !important;
   line-height: 1.45 !important;
 }
+
+body.filechute-auto-local-save .entry-save,
+body.filechute-auto-local-save .image-save,
+body.filechute-auto-local-save .filechute-save-button,
+body.filechute-auto-local-save [data-filechute-save-action] {
+  display: none !important;
+}
