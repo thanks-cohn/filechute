@@ -44,6 +44,19 @@ function validWebUrl(value) {
 
 export function writeFileChuteDrag(transfer, payload, file = null) {
   transfer.effectAllowed = "copy";
+
+  // Put the real File item into DataTransfer before adding FileChute's private
+  // metadata flavor. Some browser upload surfaces inspect the earliest/native
+  // item and are markedly more reliable when Files is the primary flavor.
+  let fileAdded = false;
+  if (file) {
+    try {
+      const before = transfer.items.length;
+      const added = transfer.items.add(file);
+      fileAdded = Boolean(added) || transfer.items.length > before || transfer.files?.length > 0;
+    } catch {}
+  }
+
   transfer.setData(FILECHUTE_DRAG_TYPE, JSON.stringify(payload));
 
   if (payload?.transferToken && payload?.relativePath && globalThis.chrome?.runtime?.sendMessage) {
@@ -57,20 +70,10 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
     }).catch(() => {});
   }
 
-  let fileAdded = false;
-  if (file) {
-    try {
-      const before = transfer.items.length;
-      transfer.items.add(file);
-      fileAdded = transfer.items.length > before || transfer.files?.length > 0;
-    } catch {}
-  }
-
-  // When FileChute has the actual bytes, expose the drag as a file only.
-  // Search engines such as Google Images and Yandex otherwise prefer the
-  // text/uri-list flavor and try to parse stale source metadata as a link,
-  // producing errors such as "Can't use this link" instead of uploading the
-  // image. Keep source URLs only as a fallback when no File item was added.
+  // When FileChute has the actual bytes, expose the drag as a file first and
+  // do not advertise stale provenance URLs as ordinary text. Google and Yandex
+  // can otherwise choose the text/uri-list flavor instead of uploading the
+  // image. Keep source URLs only as a fallback when Chromium refused the File.
   if (!fileAdded) {
     const sourceUrl = validWebUrl(payload?.sourceUrl);
     if (sourceUrl) {
