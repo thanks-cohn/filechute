@@ -25,16 +25,14 @@ jobs:
 
       - name: Build exact Git archive
         run: |
-          git archive --format=zip --output="../filechute-vanilla-1-v0.1.34.zip" HEAD
-          cd ..
-          sha256sum filechute-vanilla-1-v0.1.34.zip > filechute-vanilla-1-v0.1.34.sha256
+          mkdir -p release
+          git archive --format=zip --output="release/filechute-vanilla-1-v0.1.34.zip" HEAD
+          sha256sum release/filechute-vanilla-1-v0.1.34.zip > release/filechute-vanilla-1-v0.1.34.sha256
 
       - name: Upload packaged release
         uses: actions/upload-artifact@v4
         with:
           name: filechute-vanilla-1-v0.1.34-release
-          path: |
-            ../filechute-vanilla-1-v0.1.34.zip
-            ../filechute-vanilla-1-v0.1.34.sha256
+          path: release/*
           if-no-files-found: error
           compression-level: 0
