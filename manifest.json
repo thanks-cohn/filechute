@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "FileChute",
-  "version": "0.1.6",
-  "description": "Browse user-selected local files from a left-side drawer and drag the originals where you need them.",
+  "version": "0.1.7",
+  "description": "Browse user-selected local files from a floating Chromium file window and drag the originals where you need them.",
   "permissions": ["storage", "activeTab", "scripting"],
   "optional_host_permissions": [
     "http://127.0.0.1:17891/*",
@@ -16,12 +16,21 @@
     "service_worker": "service-worker.js",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["page-drop-bridge.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
   "web_accessible_resources": [
     {
       "resources": [
         "sidepanel.html",
         "sidepanel.css",
         "sidepanel.js",
+        "ui-enhancements.js",
         "chute-drop-compat.js",
         "receive-drops.js",
         "first-run.js",
