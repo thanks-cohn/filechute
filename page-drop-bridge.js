@@ -28,15 +28,31 @@
     }
   }
 
-  function hasNativeFileFlavor(transfer) {
-    if (!transfer) return false;
+  function nativeFiles(transfer) {
+    const files = [];
+    if (!transfer) return files;
+
     try {
-      if ([...(transfer.types || [])].includes("Files")) return true;
+      for (const file of [...(transfer.files || [])]) {
+        if (file instanceof File && file.size >= 0) files.push(file);
+      }
     } catch {}
+
+    if (files.length) return files;
+
     try {
-      if ((transfer.files?.length || 0) > 0) return true;
+      for (const item of [...(transfer.items || [])]) {
+        if (item?.kind !== "file") continue;
+        const file = item.getAsFile?.();
+        if (file instanceof File) files.push(file);
+      }
     } catch {}
-    return false;
+
+    return files;
+  }
+
+  function hasUsableNativeFile(transfer) {
+    return nativeFiles(transfer).length > 0;
   }
 
   function base64File(response) {
@@ -108,36 +124,37 @@
   }
 
   function candidateInputs(target) {
-    const result = [];
-    const add = (input) => {
-      if (input instanceof HTMLInputElement && input.type === "file" && !input.disabled && !result.includes(input)) result.push(input);
+    const local = [];
+    const global = [];
+    const addLocal = (input) => {
+      if (input instanceof HTMLInputElement && input.type === "file" && !input.disabled && !local.includes(input)) local.push(input);
     };
 
-    if (target instanceof HTMLInputElement) add(target);
+    if (target instanceof HTMLInputElement) addLocal(target);
     if (target instanceof Element) {
-      add(target.closest("label")?.querySelector('input[type="file"]'));
-      target.closest("form")?.querySelectorAll('input[type="file"]').forEach(add);
+      addLocal(target.closest("label")?.querySelector('input[type="file"]'));
+      target.closest("form")?.querySelectorAll('input[type="file"]').forEach(addLocal);
       let parent = target;
-      for (let depth = 0; parent && depth < 6; depth += 1, parent = parent.parentElement) {
-        parent.querySelectorAll?.('input[type="file"]').forEach(add);
+      for (let depth = 0; parent && depth < 7; depth += 1, parent = parent.parentElement) {
+        parent.querySelectorAll?.('input[type="file"]').forEach(addLocal);
       }
     }
-    collectInputs(document, result);
 
-    result.sort((a, b) => Number(visible(b)) - Number(visible(a)));
-    return result;
+    // Keep inputs nearest the physical drop target ahead of unrelated visible
+    // inputs elsewhere on the page. Yandex and Google can keep several hidden
+    // file inputs around at once; sorting every input only by visibility could
+    // hand the image to the wrong control and make it briefly appear then vanish.
+    collectInputs(document, global);
+    const remaining = global.filter((input) => !local.includes(input));
+    local.sort((a, b) => Number(visible(b)) - Number(visible(a)));
+    remaining.sort((a, b) => Number(visible(b)) - Number(visible(a)));
+    return [...local, ...remaining];
   }
 
   function assignFile(input, file) {
     if (!inputAccepts(input, file)) return false;
     try {
       const transfer = new DataTransfer();
-
-      // A FileChute drag represents exactly the file being dragged now. Do not
-      // copy whatever happens to still be sitting in a page's multiple-file
-      // input. Some sites retain stale FileList entries after their visible UI
-      // has been cleared or submitted; re-adding those entries caused old
-      // ChatGPT attachments to reappear when a new unrelated file was dropped.
       transfer.items.add(file);
       input.files = transfer.files;
       input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
@@ -196,7 +213,7 @@
   }
 
   async function readDraggedFile(payload) {
-    const delays = [0, 50, 120, 240];
+    const delays = [0, 40, 100, 220, 420];
     let lastError = null;
 
     for (let attempt = 0; attempt < delays.length; attempt += 1) {
@@ -245,7 +262,7 @@
 
     if (dispatchDrop(event.target, file, event)) {
       clearPageDropState(event.target, event);
-      showToast(`Dropped ${file.name} into this page.`);
+      showToast(`Passed ${file.name} to this drop target.`);
       return;
     }
 
@@ -258,13 +275,10 @@
     const types = [...(event.dataTransfer?.types || [])];
     if (!types.includes(FILECHUTE_DRAG_TYPE)) return;
 
-    // When Chromium preserved FileChute's real File item, do not interfere at
-    // all. Let Google, Yandex, ChatGPT, and ordinary upload targets process the
-    // native file drag themselves. The bridge exists only for the cases where
-    // the browser dropped the binary item while crossing extension/page
-    // boundaries.
-    if (types.includes("Files")) return;
-
+    // A cross-process Chromium drag can advertise the string "Files" even
+    // when the target page receives an empty FileList. Do not treat that label
+    // as proof that the bytes survived. Keep the page drop-eligible and decide
+    // at the actual drop event whether a usable native File exists.
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
   }, true);
@@ -274,10 +288,10 @@
     const payload = parsePayload(event.dataTransfer);
     if (!payload) return;
 
-    // A native File item is cheaper and more reliable than copying the same
-    // image through extension messaging as base64. It also prevents the page
-    // from receiving both its own native drop and a second synthetic drop.
-    if (hasNativeFileFlavor(event.dataTransfer)) return;
+    // Only stand down when the target page really received a File object.
+    // Merely seeing a "Files" type is insufficient; Chrome can leave behind a
+    // phantom Files flavor after several extension-to-page drag sessions.
+    if (hasUsableNativeFile(event.dataTransfer)) return;
 
     event.preventDefault();
 
