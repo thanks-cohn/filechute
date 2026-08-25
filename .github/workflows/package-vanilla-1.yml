@@ -6,7 +6,7 @@ on:
       - packaging/vanilla-1
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   package:
@@ -22,17 +22,36 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "949f692c80ef79d86c30f6c55851ef98a35f2b7d"
           grep '"version": "0.1.34"' manifest.json
+          test -f RELEASE_NOTES_v0.1.34.md
 
       - name: Build exact Git archive
         run: |
           mkdir -p release
-          git archive --format=zip --output="release/filechute-vanilla-1-v0.1.34.zip" HEAD
-          sha256sum release/filechute-vanilla-1-v0.1.34.zip > release/filechute-vanilla-1-v0.1.34.sha256
+          git archive --format=zip --output="release/FileChute-vanilla-1-v0.1.34-Chrome-Web-Store.zip" HEAD
+          sha256sum release/FileChute-vanilla-1-v0.1.34-Chrome-Web-Store.zip > release/FileChute-vanilla-1-v0.1.34-SHA256.txt
 
-      - name: Upload packaged release
+      - name: Upload CI artifact
         uses: actions/upload-artifact@v4
         with:
           name: filechute-vanilla-1-v0.1.34-release
           path: release/*
           if-no-files-found: error
           compression-level: 0
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view vanilla-1 >/dev/null 2>&1; then
+            gh release upload vanilla-1 \
+              release/FileChute-vanilla-1-v0.1.34-Chrome-Web-Store.zip \
+              release/FileChute-vanilla-1-v0.1.34-SHA256.txt \
+              --clobber
+          else
+            gh release create vanilla-1 \
+              release/FileChute-vanilla-1-v0.1.34-Chrome-Web-Store.zip \
+              release/FileChute-vanilla-1-v0.1.34-SHA256.txt \
+              --title "FileChute Vanilla 1 — v0.1.34" \
+              --notes-file RELEASE_NOTES_v0.1.34.md \
+              --verify-tag
+          fi
