@@ -1,8 +1,20 @@
 (() => {
   const MARKER = "__filechute_page_drop_bridge_v1__";
   const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
-  if (globalThis[MARKER]) return;
-  globalThis[MARKER] = true;
+  const GENERATION = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  globalThis[MARKER] = GENERATION;
+
+  function extensionContextAvailable() {
+    try {
+      return Boolean(globalThis.chrome?.runtime?.id);
+    } catch {
+      return false;
+    }
+  }
+
+  function activeBridge() {
+    return globalThis[MARKER] === GENERATION && extensionContextAvailable();
+  }
 
   function parsePayload(transfer) {
     try {
@@ -163,19 +175,48 @@
     }
   }
 
+  function wait(milliseconds) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+  }
+
+  async function readDraggedFile(payload) {
+    const delays = [0, 50, 120, 240];
+    let lastError = null;
+
+    for (let attempt = 0; attempt < delays.length; attempt += 1) {
+      if (delays[attempt]) await wait(delays[attempt]);
+      if (!activeBridge()) throw new Error("FileChute reloaded while this page was open. Try the drop again.");
+
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: "filechute-read-dragged-file-v1",
+          transferToken: payload.transferToken,
+          relativePath: payload.relativePath,
+          representation: payload.representation || "original",
+          mime: payload.mime || ""
+        });
+
+        if (response?.ok) return response;
+        const message = response?.error || "FileChute could not read that file.";
+        lastError = new Error(message);
+        if (!/drag is no longer available|not registered|no longer available/i.test(message)) throw lastError;
+      } catch (error) {
+        lastError = error;
+        if (/extension context invalidated/i.test(String(error?.message || error))) {
+          throw new Error("FileChute reloaded while this page was open. Try the drop again.");
+        }
+        if (!/drag is no longer available|not registered|no longer available/i.test(String(error?.message || error))) throw error;
+      }
+    }
+
+    throw lastError || new Error("FileChute could not read that file.");
+  }
+
   async function receive(payload, event) {
     if (payload.kind === "directory") throw new Error("This website upload target accepts files, not a FileChute directory.");
     if (!payload.transferToken || !payload.relativePath) throw new Error("Reload FileChute and drag this item again.");
 
-    const response = await chrome.runtime.sendMessage({
-      type: "filechute-read-dragged-file-v1",
-      transferToken: payload.transferToken,
-      relativePath: payload.relativePath,
-      representation: payload.representation || "original",
-      mime: payload.mime || ""
-    });
-    if (!response?.ok) throw new Error(response?.error || "FileChute could not read that file.");
-
+    const response = await readDraggedFile(payload);
     const file = base64File(response);
     const inputs = candidateInputs(event.target).filter((candidate) => inputAccepts(candidate, file));
     const input = inputs[0];
@@ -197,21 +238,17 @@
   }
 
   document.addEventListener("dragover", (event) => {
+    if (!activeBridge()) return;
     if (![...(event.dataTransfer?.types || [])].includes(FILECHUTE_DRAG_TYPE)) return;
-    // Allow FileChute's drop while still letting the page's own dragover
-    // listeners run. Pages such as ChatGPT use those listeners to manage their
-    // visible drop overlay.
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
   }, true);
 
   document.addEventListener("drop", (event) => {
+    if (!activeBridge()) return;
     const payload = parsePayload(event.dataTransfer);
     if (!payload) return;
 
-    // Prevent browser navigation/default handling, but intentionally do NOT
-    // stop propagation. The target page must receive its own drop lifecycle so
-    // it can dismiss overlays and reset drag UI normally.
     event.preventDefault();
 
     void receive(payload, event).catch((error) => {
