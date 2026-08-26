@@ -1,3 +1,5 @@
+import "./drag-diagnostics.js";
+
 const controls = document.querySelector(".controls");
 const breadcrumbs = document.querySelector("#breadcrumbs");
 const status = document.querySelector("#status");
