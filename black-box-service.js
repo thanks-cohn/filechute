@@ -53,7 +53,37 @@ function appendEvent(event) {
   return writeChain;
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+function serviceRecord(checkpoint, message, sender, extra = {}) {
+  const transferToken = String(message?.transferToken || message?.token || message?.sourceToken || "") || null;
+  const relativePath = String(message?.relativePath || message?.directoryPath || message?.entryPath || "") || null;
+  const itemName = String(message?.name || "") || null;
+  void appendEvent({
+    at: new Date().toISOString(),
+    source: "filechute-service-worker",
+    checkpoint,
+    transferToken,
+    itemName,
+    relativePath,
+    messageType: message?.type || null,
+    senderExtensionId: sender?.id || null,
+    senderTabId: Number.isInteger(sender?.tab?.id) ? sender.tab.id : null,
+    manifestVersion: chrome.runtime.getManifest().version,
+    ...extra
+  });
+}
+
+const observedTransferMessages = new Set([
+  "filechute-register-transfer-v1",
+  "filechute-read-dragged-file-v1",
+  "chute-gallery-list-v1",
+  "chute-gallery-read-v1"
+]);
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (observedTransferMessages.has(message?.type)) {
+    serviceRecord("service-message-received", message, sender, { external: false });
+  }
+
   if (message?.type === "filechute-blackbox-log-v1") {
     void appendEvent(message.event).then((sequence) => sendResponse({ ok: true, sequence }));
     return true;
@@ -80,5 +110,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  return false;
+});
+
+chrome.runtime.onMessageExternal.addListener((message, sender) => {
+  if (!observedTransferMessages.has(message?.type)) return false;
+  serviceRecord("service-external-message-received", message, sender, { external: true });
   return false;
 });
