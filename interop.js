@@ -48,14 +48,29 @@ function windowsPlatform() {
   return platform.includes("windows") || platform.startsWith("win");
 }
 
-function cacheTransferFile(payload, file) {
-  if (!(file instanceof File) || !payload?.transferToken) return;
+function diagnostic(checkpoint, payload, details = {}) {
+  globalThis.FileChuteBlackBox?.log?.(checkpoint, {
+    transferToken: payload?.transferToken || null,
+    itemName: payload?.originalName || payload?.name || null,
+    relativePath: payload?.relativePath || null,
+    handler: "interop.js",
+    ...details
+  });
+}
 
+function cacheTransferFile(payload, file) {
+  if (!(file instanceof File) || !payload?.transferToken) {
+    diagnostic("sender-file-cache-skipped", payload, { result: "ignored", reason: "missing-file-or-token" });
+    return;
+  }
+
+  diagnostic("sender-file-cache-started", payload, { result: "pending", file: { name: file.name, type: file.type, size: file.size } });
   void writeStored(TRANSFER_FILE_CACHE_KEY, {
     token: String(payload.transferToken),
     file,
     storedAt: Date.now()
-  }).catch((error) => {
+  }).then(() => diagnostic("sender-file-cache-completed", payload, { result: "ok" })).catch((error) => {
+    diagnostic("sender-file-cache-failed", payload, { result: "failed", exception: { name: error?.name, message: error?.message, stack: error?.stack } });
     console.debug("FileChute could not cache drag bytes", error);
   });
 }
@@ -105,6 +120,7 @@ export function payloadFromTextTicket(value) {
 }
 
 export function writeFileChuteDrag(transfer, payload, file = null) {
+  diagnostic("sender-payload-built", payload, { result: "ok", kind: payload?.kind, representation: payload?.representation });
   transfer.effectAllowed = "copy";
   cacheTransferFile(payload, file);
 
@@ -117,13 +133,20 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
       const before = transfer.items.length;
       const added = transfer.items.add(file);
       fileAdded = Boolean(added) || transfer.items.length > before || transfer.files?.length > 0;
-    } catch {}
+    } catch (error) {
+      diagnostic("sender-native-file-add-failed", payload, { result: "failed", exception: { name: error?.name, message: error?.message, stack: error?.stack } });
+    }
   }
+  diagnostic("sender-native-file-policy", payload, { result: useNativeFileItem ? (fileAdded ? "ok" : "failed") : "ignored", platformWindows: onWindows, attempted: useNativeFileItem, observedFileAdded: fileAdded });
 
   // Preserve the full FileChute payload where Chromium allows custom flavors.
+  let customMimeWritten = false;
   try {
     transfer.setData(FILECHUTE_DRAG_TYPE, JSON.stringify(payload));
-  } catch {}
+    customMimeWritten = true;
+  } catch (error) {
+    diagnostic("sender-custom-mime-write", payload, { result: "failed", exception: { name: error?.name, message: error?.message } });
+  }
 
   // When there is no trustworthy native File, also expose a very small standard
   // text flavor. Windows Chromium has proven much more reliable with short
@@ -132,11 +155,23 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
   if (!fileAdded) {
     const ticket = compactTicket(payload);
     if (ticket) {
-      try { transfer.setData("text/plain", ticket); } catch {}
+      try {
+        transfer.setData("text/plain", ticket);
+        diagnostic("sender-ticket-written", payload, { result: "ok", ticketFormat: FILECHUTE_TEXT_PREFIX, ticketLength: ticket.length });
+      } catch (error) {
+        diagnostic("sender-ticket-written", payload, { result: "failed", exception: { name: error?.name, message: error?.message } });
+      }
     }
   }
 
+  diagnostic("sender-datatransfer-after-write", payload, {
+    result: "ok",
+    customMimeWritten,
+    transfer: globalThis.FileChuteBlackBox?.transferSnapshot?.(transfer, { allowRead: false }) || null
+  });
+
   if (payload?.transferToken && payload?.relativePath && globalThis.chrome?.runtime?.sendMessage) {
+    diagnostic("sender-registration-sent", payload, { result: "pending" });
     globalThis.chrome.runtime.sendMessage({
       type: "filechute-register-transfer-v1",
       token: payload.transferToken,
@@ -144,7 +179,14 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
       representation: payload.representation || "original",
       kind: payload.kind || "file",
       name: payload.originalName || payload.name || ""
-    }).catch(() => {});
+    }).then((response) => diagnostic("sender-registration-result", payload, {
+      result: response?.ok ? "ok" : "failed",
+      responseOk: Boolean(response?.ok),
+      error: response?.error || null
+    })).catch((error) => diagnostic("sender-registration-result", payload, {
+      result: "failed",
+      exception: { name: error?.name, message: error?.message, stack: error?.stack }
+    }));
   }
 }
 

@@ -11,6 +11,10 @@ const GALLERY_SOURCE_PREFIX = "filechute-gallery-source-v1:";
 const MAX_INLINE_TRANSFER_BYTES = 48 * 1024 * 1024;
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "ico", "apng"]);
 
+function diagnostic(checkpoint, message, extra = {}) {
+  globalThis.FileChuteServiceBlackBox?.append?.(checkpoint, message, extra);
+}
+
 async function fileChuteLaunchMode() {
   return (await readStored(LAUNCH_MODE_KEY)) === "window" ? "window" : "panel";
 }
@@ -136,6 +140,8 @@ async function cachedTransferFile(token) {
   // Give IndexedDB a brief chance to finish before falling back to reopening
   // the file through the saved filesystem handle.
   const delays = [0, 30, 80, 160, 260, 420];
+  const startedAt = performance.now();
+  diagnostic("worker-cache-lookup-started", { transferToken: wanted }, { result: "pending" });
   for (const delay of delays) {
     if (delay) await wait(delay);
     let record = null;
@@ -147,17 +153,27 @@ async function cachedTransferFile(token) {
     const usable = file && typeof file.arrayBuffer === "function" && typeof file.name === "string";
     if (String(record?.token || "") === wanted && usable) {
       await removeStored(TRANSFER_FILE_CACHE_KEY).catch(() => {});
+      diagnostic("worker-cache-lookup-result", { transferToken: wanted, name: file.name }, {
+        result: "ok", cacheHit: true, waitMs: Number((performance.now() - startedAt).toFixed(3)), fileSize: file.size, fileType: file.type
+      });
       return file;
     }
   }
 
+  diagnostic("worker-cache-lookup-result", { transferToken: wanted }, {
+    result: "ignored", cacheHit: false, waitMs: Number((performance.now() - startedAt).toFixed(3))
+  });
   return null;
 }
 
 async function registerTransfer(message) {
   const token = String(message?.token || "");
   const relativePath = String(message?.relativePath || "");
-  if (!token || !relativePath) return false;
+  if (!token || !relativePath) {
+    diagnostic("worker-registration-validation", message, { result: "failed", reason: "missing-token-or-path" });
+    return false;
+  }
+  diagnostic("worker-registration-started", message, { result: "pending" });
 
   const record = {
     relativePath,
@@ -167,11 +183,14 @@ async function registerTransfer(message) {
   };
 
   await chrome.storage.session.set({ [transferKey(token)]: record });
+  diagnostic("worker-registration-stored", message, { result: "ok", kind: record.kind, representation: record.representation });
 
   // Prepare the currently active browser page to consume FileChute's token.
   // On Windows this is the primary transfer path because Chromium does not
   // reliably carry script-added File objects across a native drag operation.
-  void ensureActivePageDropBridge();
+  void ensureActivePageDropBridge()
+    .then((injected) => diagnostic("worker-receiver-bridge-prepare-result", message, { result: injected ? "ok" : "failed", injected }))
+    .catch((error) => diagnostic("worker-receiver-bridge-prepare-result", message, { result: "failed", exception: { name: error?.name, message: error?.message, stack: error?.stack } }));
 
   // Directory drags can become saved FrameChute galleries, so remember their
   // source mapping beyond the current browser session. The actual filesystem
@@ -184,12 +203,20 @@ async function registerTransfer(message) {
 }
 
 async function consumeTransfer(token, relativePath) {
+  diagnostic("worker-transfer-lookup-started", { transferToken: token, relativePath }, { result: "pending" });
   const key = transferKey(token);
   const stored = await chrome.storage.session.get(key);
   await chrome.storage.session.remove(key).catch(() => {});
   const record = stored?.[key];
-  if (!record) throw new Error("This FileChute drag is no longer available. Drag the item again.");
-  if (String(record.relativePath) !== String(relativePath)) throw new Error("The FileChute drag does not match this file.");
+  if (!record) {
+    diagnostic("worker-transfer-lookup-result", { transferToken: token, relativePath }, { result: "failed", reason: "missing" });
+    throw new Error("This FileChute drag is no longer available. Drag the item again.");
+  }
+  if (String(record.relativePath) !== String(relativePath)) {
+    diagnostic("worker-transfer-lookup-result", { transferToken: token, relativePath }, { result: "failed", reason: "path-mismatch", registeredPath: record.relativePath });
+    throw new Error("The FileChute drag does not match this file.");
+  }
+  diagnostic("worker-transfer-lookup-result", { transferToken: token, relativePath }, { result: "claimed", record });
   return record;
 }
 
@@ -342,6 +369,7 @@ async function readGalleryImage(message) {
 async function readDraggedFile(message) {
   const relativePath = String(message?.relativePath || "");
   const token = String(message?.transferToken || "");
+  diagnostic("worker-byte-read-started", message, { result: "pending" });
   const transfer = await consumeTransfer(token, relativePath);
 
   if (transfer.representation !== "original") {
@@ -351,13 +379,23 @@ async function readDraggedFile(message) {
   // Prefer the exact File captured by the side panel at dragstart. This avoids
   // reopening the Windows filesystem handle from the service-worker process.
   let file = await cachedTransferFile(token);
-  if (!file) file = await fileForRelativePath(relativePath);
+  let fileSource = file ? "exact-cache" : "filesystem-fallback";
+  if (!file) {
+    diagnostic("worker-filesystem-fallback-started", message, { result: "pending" });
+    try {
+      file = await fileForRelativePath(relativePath);
+      diagnostic("worker-filesystem-fallback-result", message, { result: "ok", fileSize: file.size, fileType: file.type, itemName: file.name });
+    } catch (error) {
+      diagnostic("worker-filesystem-fallback-result", message, { result: "failed", exception: { name: error?.name, message: error?.message, stack: error?.stack } });
+      throw error;
+    }
+  }
 
   if (file.size > MAX_INLINE_TRANSFER_BYTES) {
     throw new Error("This file is too large for the current direct handoff. Large-file streaming is still being added.");
   }
 
-  return {
+  const response = {
     ok: true,
     name: file.name,
     type: file.type || message?.mime || "application/octet-stream",
@@ -365,6 +403,8 @@ async function readDraggedFile(message) {
     lastModified: file.lastModified,
     base64: bytesToBase64(await file.arrayBuffer())
   };
+  diagnostic("worker-byte-read-result", message, { result: "ok", byteSize: file.size, fileSource });
+  return response;
 }
 
 async function handleBridgeMessage(message) {
@@ -392,7 +432,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!["filechute-read-dragged-file-v1", "chute-gallery-list-v1", "chute-gallery-read-v1"].includes(message?.type)) return false;
   void handleBridgeMessage(message)
     .then(sendResponse)
-    .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
+    .catch((error) => {
+      diagnostic("worker-request-result", message, { result: "failed", caller: "internal", exception: { name: error?.name, message: error?.message, stack: error?.stack } });
+      sendResponse({ ok: false, error: error?.message || String(error) });
+    });
   return true;
 });
 
@@ -400,7 +443,10 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
   if (!["filechute-read-dragged-file-v1", "chute-gallery-list-v1", "chute-gallery-read-v1"].includes(message?.type)) return false;
   void handleBridgeMessage(message)
     .then(sendResponse)
-    .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
+    .catch((error) => {
+      diagnostic("worker-request-result", message, { result: "failed", caller: "external", exception: { name: error?.name, message: error?.message, stack: error?.stack } });
+      sendResponse({ ok: false, error: error?.message || String(error) });
+    });
   return true;
 });
 

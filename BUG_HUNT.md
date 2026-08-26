@@ -81,3 +81,9 @@ For every fix, run at least:
 - 10-15 repeated browser-page drags.
 
 A one-off success is not closure for W-DRAG-002.
+
+## Diagnostics rebuild: transition localization
+
+The current diagnostics branch records explicit sender payload/cache/registration/DataTransfer checkpoints, worker lookup/cache/filesystem/byte-read checkpoints, and receiver claim/reconstruction/input/synthetic-dispatch checkpoints. Browser-generated and application-generated events are distinguished with `eventOrigin`; repeated sender attempts carry a session-local attempt number and a watchdog records the signature `W-DRAG-002:pointerdown-without-dragstart` when Chromium does not emit the next expected event.
+
+No transport behavior was changed in this pass. In particular, the compact `FILECHUTE1|...` compatibility ticket remains the Windows cross-renderer carrier and native `File` insertion remains disabled on Windows. The next Windows reproduction should export the log after 10-15 attempts and establish the first token whose ordered checkpoints differ from the preceding successful token. A failure is not considered fixed by this instrumentation.
