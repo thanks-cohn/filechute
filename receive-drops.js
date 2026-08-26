@@ -3,7 +3,7 @@ import { mergeMetadata } from "./metadata-store.js";
 
 const ROOT_HANDLE_KEY = "filechute-root-handle";
 const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
-const CHUTE_DRAG_TYPE = "application/x-filechute-item";
+const CHUTE_DRAG_TYPE = "application/x-chute-item";
 const RESTORE_PATH_KEY = "filechute-restore-path-v1";
 
 const statusElement = document.querySelector("#status");
