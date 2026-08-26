@@ -1,15 +1,25 @@
-# Chute Privacy Policy
+# Chute privacy
 
-Last updated: August 26, 2026
+Chute is designed as a local-first browser extension.
 
-Chute is local-first. It has no account, analytics, advertising, telemetry, cloud file store, local daemon, or native helper.
+## Files
 
-Chute can access only the directory a user explicitly selects through Chromium's File System Access API. The exact selected directory is the root. File contents are read locally for listing, previews, resizing, explicit intake, and user-initiated drag-out. Chute does not upload the selected directory to a Chute service.
+Chute reads and writes only inside the directory that the user explicitly selects through Chromium's File System Access picker. Chute does not receive a general filesystem path and does not scan unrelated directories.
 
-The extension stores the selected directory handle in IndexedDB. Preferences, lightweight caches, transfer tokens, an ingest count, and available provenance such as source URL, parent page URL, and capture time remain in browser-managed extension storage. Generated previews are local and do not replace originals.
+The selected directory handle, Chute preferences, local preview/cache data, Chutty preferences, and provenance metadata are stored in browser-managed local storage/IndexedDB so the extension can restore its state.
 
-On targeted Google, Yandex, and ChatGPT pages, Chute observes explicit drag/drop gestures to recover a selected image when possible. It does not continuously scrape pages. A directly dropped real file may be carried to the extension as bounded encoded bytes because Chrome extension messages do not reliably preserve `File` objects. URL-only image retrieval can require optional access to that resource's HTTP(S) origin. Captures larger than the documented bridge limit are rejected.
+## Browser images
 
-When a user drags a local file from Chute into a website, that website receives the file as part of the user's requested action and applies its own privacy terms.
+When the user explicitly drags an image or file into Chute or Chutty, the extension may inspect the drag payload and source-page image metadata in order to recover the item the user chose. Supported image surfaces can temporarily record candidate image URLs for that active drag so Chute can resolve browser drags that do not expose a normal `File` object.
 
-Uninstalling Chute or clearing extension storage removes browser-managed Chute state. It does not delete files in the selected folder.
+Chutty uses the same selected Chute root and shared metadata store. It does not create or scan a second filesystem location.
+
+## Network access
+
+Chute does not operate a localhost server or native helper. Optional HTTP/HTTPS access is used only when the user explicitly asks Chute to receive a browser resource whose bytes must be retrieved from its source URL.
+
+The Support Chutty button opens Chute's built-in Stripe support destination when the user explicitly clicks it. The support destination is part of the extension configuration and is not editable by end users.
+
+## No background upload
+
+Chute does not upload the user's selected local files to a Chute server. Normal shelf operations, metadata, thumbnails, and image resize remain local to the browser and the user-selected folder.
