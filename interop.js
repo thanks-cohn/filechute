@@ -1,5 +1,9 @@
+import { writeStored } from "./storage.js";
+
 export const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
 export const FILECHUTE_VERSION = 1;
+
+const TRANSFER_FILE_CACHE_KEY = "filechute-transfer-file-cache-v1";
 
 export function makeFileChutePayload({
   kind,
@@ -42,14 +46,44 @@ function validWebUrl(value) {
   }
 }
 
+function windowsPlatform() {
+  const platform = String(
+    globalThis.navigator?.userAgentData?.platform ||
+    globalThis.navigator?.platform ||
+    globalThis.navigator?.userAgent ||
+    ""
+  ).toLowerCase();
+  return platform.includes("windows") || platform.startsWith("win");
+}
+
+function cacheTransferFile(payload, file) {
+  if (!(file instanceof File) || !payload?.transferToken) return;
+
+  // Keep exactly one most-recent transfer file. The receiving page can fetch
+  // these bytes through FileChute's bridge instead of asking Windows Chromium
+  // to synthesize an OS-native file drag. A single slot avoids abandoned drag
+  // attempts accumulating permanent temporary files in IndexedDB.
+  void writeStored(TRANSFER_FILE_CACHE_KEY, {
+    token: String(payload.transferToken),
+    file,
+    storedAt: Date.now()
+  }).catch((error) => {
+    console.debug("FileChute could not cache drag bytes", error);
+  });
+}
+
 export function writeFileChuteDrag(transfer, payload, file = null) {
   transfer.effectAllowed = "copy";
 
-  // Put the real File item into DataTransfer before adding FileChute's private
-  // metadata flavor. Some browser upload surfaces inspect the earliest/native
-  // item and are markedly more reliable when Files is the primary flavor.
+  cacheTransferFile(payload, file);
+
+  // Chromium has a long-standing bug where DataTransferItemList.add(File) can
+  // appear to succeed while no usable File reaches the drop target. On Windows
+  // repeated synthetic file drags can also leave Chromium's drag state wedged.
+  // Carry only FileChute's token there; the page bridge retrieves the bytes.
+  const useNativeFileItem = Boolean(file) && !windowsPlatform();
   let fileAdded = false;
-  if (file) {
+  if (useNativeFileItem) {
     try {
       const before = transfer.items.length;
       const added = transfer.items.add(file);
@@ -70,11 +104,15 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
     }).catch(() => {});
   }
 
-  // When FileChute has the actual bytes, expose the drag as a file first and
-  // do not advertise stale provenance URLs as ordinary text. Google and Yandex
-  // can otherwise choose the text/uri-list flavor instead of uploading the
-  // image. Keep source URLs only as a fallback when Chromium refused the File.
   if (!fileAdded) {
+    // On Windows do not turn a failed file drag into a provenance-URL drag.
+    // A compatible receiving page will consume FILECHUTE_DRAG_TYPE; an
+    // incompatible page merely sees the harmless FileChute relative path.
+    if (file && windowsPlatform() && payload?.relativePath) {
+      try { transfer.setData("text/plain", payload.relativePath); } catch {}
+      return;
+    }
+
     const sourceUrl = validWebUrl(payload?.sourceUrl);
     if (sourceUrl) {
       try { transfer.setData("text/uri-list", sourceUrl); } catch {}
