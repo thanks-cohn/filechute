@@ -80,7 +80,7 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
   // Chromium has a long-standing bug where DataTransferItemList.add(File) can
   // appear to succeed while no usable File reaches the drop target. On Windows
   // repeated synthetic file drags can also leave Chromium's drag state wedged.
-  // Carry only FileChute's token there; the page bridge retrieves the bytes.
+  // Carry only FileChute's token there; the receiver retrieves the bytes.
   const onWindows = windowsPlatform();
   const useNativeFileItem = Boolean(file) && !onWindows;
   let fileAdded = false;
@@ -109,8 +109,13 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
     // Windows browser-to-browser transfers are deliberately token-only. Do not
     // add text/plain or text/uri-list for a real file: Chromium will otherwise
     // let the destination consume the filename/URL as text before FileChute's
-    // page bridge can reconstruct the actual File from the transfer token.
+    // bridge can reconstruct the actual File from the transfer token.
     if (file && onWindows) return;
+
+    // Directories are also private-protocol transfers. Advertising a folder
+    // path as text makes Chromium start a text drag and can prevent FrameChute
+    // from seeing the gallery token at all.
+    if (payload?.kind === "directory") return;
 
     const sourceUrl = validWebUrl(payload?.sourceUrl);
     if (sourceUrl) {
