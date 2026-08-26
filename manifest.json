@@ -34,7 +34,7 @@
   "content_scripts": [
     {
       "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
-      "js": ["chatgpt-image-drag-source.js"],
+      "js": ["black-box.js", "chatgpt-image-drag-source.js"],
       "run_at": "document_start",
       "all_frames": false
     },
@@ -46,7 +46,7 @@
     },
     {
       "matches": ["https://*.google.com/*"],
-      "js": ["google-image-drag-source.js", "page-drop-bridge.js", "page-drop-text-envelope.js", "page-resource-export.js"],
+      "js": ["black-box.js", "google-image-drag-source.js", "page-drop-bridge.js", "page-drop-text-envelope.js", "page-resource-export.js"],
       "run_at": "document_start",
       "all_frames": false
     },
@@ -59,7 +59,7 @@
         "https://*.yandex.uz/*",
         "https://*.yandex.com.tr/*"
       ],
-      "js": ["yandex-image-drag-source.js", "page-drop-bridge.js", "page-drop-text-envelope.js", "page-resource-export.js"],
+      "js": ["black-box.js", "yandex-image-drag-source.js", "page-drop-bridge.js", "page-drop-text-envelope.js", "page-resource-export.js"],
       "run_at": "document_start",
       "all_frames": false
     }
@@ -82,6 +82,7 @@
         "chatgpt-image-drop-fallback.js",
         "google-image-drop-fallback.js",
         "yandex-image-drop-fallback.js",
+        "black-box.js",
         "page-drop-text-envelope.js",
         "directory-drag.js",
         "settings-draft.js",
