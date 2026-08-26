@@ -1,6 +1,7 @@
 (() => {
   const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
-  const FILECHUTE_TEXT_PREFIX = "FILECHUTE1|";
+  const COMPACT_PREFIX = "FILECHUTE1|";
+  const LEGACY_PREFIX = "filechute-transfer-v1:";
 
   function looksLikeTransport(transfer) {
     try {
@@ -15,16 +16,13 @@
     }
   }
 
-  function parseTicket(transfer) {
-    let text = "";
-    try {
-      text = String(transfer?.getData("text/plain") || "");
-    } catch {
-      return null;
-    }
-    if (!text.startsWith(FILECHUTE_TEXT_PREFIX)) return null;
+  function validPayload(payload) {
+    return payload?.protocol === "filechute-item" && payload?.version === 1 ? payload : null;
+  }
 
-    const parts = text.slice(FILECHUTE_TEXT_PREFIX.length).split("|");
+  function parseCompact(text) {
+    if (!text.startsWith(COMPACT_PREFIX)) return null;
+    const parts = text.slice(COMPACT_PREFIX.length).split("|");
     if (parts.length < 5) return null;
     const [sourceExtensionId, transferToken, kindCode, encodedPath, ...nameParts] = parts;
     if (!sourceExtensionId || !transferToken) return null;
@@ -53,12 +51,52 @@
     }
   }
 
+  function parseLegacy(text) {
+    if (!text.startsWith(LEGACY_PREFIX)) return null;
+    try {
+      return validPayload(JSON.parse(decodeURIComponent(text.slice(LEGACY_PREFIX.length))));
+    } catch {
+      return null;
+    }
+  }
+
+  function parseTicket(transfer) {
+    let text = "";
+    try {
+      text = String(transfer?.getData("text/plain") || "");
+    } catch {
+      return null;
+    }
+    return parseCompact(text) || parseLegacy(text);
+  }
+
+  function showCaught(payload) {
+    let toast = document.getElementById("__filechute_transport_toast__");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = "__filechute_transport_toast__";
+      Object.assign(toast.style, {
+        position: "fixed",
+        right: "18px",
+        bottom: "18px",
+        zIndex: "2147483647",
+        padding: "8px 11px",
+        borderRadius: "9px",
+        background: "rgba(18,20,20,.96)",
+        color: "#f3f5f0",
+        border: "1px solid rgba(255,255,255,.14)",
+        font: "600 12px/1.3 system-ui, sans-serif",
+        pointerEvents: "none"
+      });
+      (document.documentElement || document.body).append(toast);
+    }
+    toast.textContent = `FileChute ticket caught: ${payload?.originalName || payload?.name || "item"}`;
+    clearTimeout(globalThis.__filechuteTransportToastTimer);
+    globalThis.__filechuteTransportToastTimer = setTimeout(() => toast.remove(), 1800);
+  }
+
   document.addEventListener("dragover", (event) => {
     if (!looksLikeTransport(event.dataTransfer)) return;
-
-    // The ticket is intentionally standard text so it survives the renderer
-    // boundary. Keep the page drop-eligible; we verify the FileChute prefix at
-    // drop time before consuming anything.
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
   }, true);
@@ -67,9 +105,9 @@
     const payload = parseTicket(event.dataTransfer);
     if (!payload) return;
 
-    // Do not let the website insert the transport ticket as ordinary text.
     event.preventDefault();
     event.stopImmediatePropagation();
+    showCaught(payload);
 
     const transfer = new DataTransfer();
     transfer.effectAllowed = "copy";
