@@ -6,16 +6,26 @@
 
 ## Shelf engine
 
-The existing FileChute shelf remains the engine: directory navigation, filtered/paged listings, recursive search, previews, intake, duplicate-safe writes, resizing, provenance, outbound real-file drag, targeted destination fallbacks, and FrameChute transfer/gallery messages. Browser-only metadata and thumbnail stores remain; the old optional second-folder mirror UI is intentionally removed.
-
-Recursive search walks only the selected handle, yields every 100 entries, and uses a generation number so an older walk cannot replace newer results. Render generations and object-URL revocation protect page changes.
+The existing FileChute shelf remains the engine: directory navigation, filtered/paged listings, recursive search, image resize, robust drag-out, FrameChute interop, and adaptation to a single selected root handle.
 
 ## Chutty
 
-`chutty-host.js` installs the recognizable paper-bin Chutty in a closed shadow root only on targeted supported sites. Its delayed hover flyout expands and shrinks the host, remains open while crossed with the pointer, and collapses when a drag begins. Clicking Chutty cycles through lightweight mascot animations and reveals the support affordance; opening the shelf remains an explicit action in the flyout. The optional support destination is stored as `chute-support-url` and is editable in Chute settings. When no destination is configured, the support control remains disabled rather than guessing or hard-coding a payment URL.
+`chutty-host.js` is a floating surface over supported sites. It is deliberately treated as another Chute intake surface rather than as a separate mini file system. Local files are captured during the trusted drop event; browser-image drops reuse the existing ChatGPT/Google/Yandex source-capture records and try their candidate URLs before reporting failure. `chutty-service.js` writes accepted items to the same selected Chute root and records provenance through the shared metadata store.
 
-Chutty reads a native drop during the trusted event. JSON-safe base64 is used only for the bounded page-to-extension capture bridge; filesystem drag-out continues to synchronously add a fresh real `File` to `DataTransfer`. `chutty-service.js` handles panel opening and Chutty ingestion while the established shelf service worker retains the existing transfer/gallery contracts. Chutty writes only beneath the selected root, chooses a non-conflicting filename, records provenance through the shared metadata store when available, and increments the count only for successful writes. Permission failures require reconnecting in the panel.
+Chutty visibility, left/right position, hover menu behavior, click-to-cycle behavior, support-button visibility, enabled click animations, and click-animation order are controlled from Chute settings. Hiding Chutty changes live storage state and the already-injected host hides immediately instead of requiring reinjection.
+
+The Support Chutty destination is an extension-owned constant in `chutty-config.js`; it is not editable by end users.
+
+## Animation layout
+
+Animation definitions live under `animations/assets/<animation>/animation.js`. Each definition owns its sequence timing and may use either fallback face/label/class steps or image frames stored beside that definition. `animations/catalog.js` is the small registry of installed animation directories.
+
+The runner is interruptible by design: a click, drag-enter, accepted drop, successful write, or failed write replaces the active sequence by incrementing the animation token. Automatic lifecycle sequences currently include Ready, Eating, Success, and Failure; normal click sequences can be enabled, disabled, and reordered from Settings.
+
+See `animations/README.md` for the animation schema and how to add image-backed sequences.
 
 ## Interoperability and drag lifecycle
 
-`interop.js` writes the real file before private metadata. Established internal drag/message names remain stable across the FileChute-to-Chute rebrand, including the FrameChute protocol and gallery message names. Transfer tokens allow targeted page fallbacks and FrameChute to request bytes when a destination advertises Files but did not receive a usable native file. Drag modules clear visual and transfer state on drag end, blur, lifecycle events, and watchdog timeouts. Metadata is root-relative and never includes an absolute path.
+Established Chute/FileChute/FrameChute internal protocol strings remain stable where they are contracts rather than branding. The rebrand is user-facing; persistent storage keys, MIME types, bridge messages, and DOM hooks are not renamed merely for cosmetic consistency.
+
+`interop.js` continues to prefer a fresh real `File` before private metadata. Transfer tokens allow targeted page fallbacks and FrameChute to request bytes when a destination advertises Files but did not receive a usable native file. Drag modules clear visual and transfer state on drag end, blur, lifecycle events, and watchdog timeouts. Metadata is root-relative and never includes an absolute path.
