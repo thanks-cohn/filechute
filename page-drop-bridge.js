@@ -6,6 +6,18 @@
   const GENERATION = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   globalThis[MARKER] = GENERATION;
 
+  function diagnostic(checkpoint, payload = null, details = {}) {
+    globalThis.FileChuteBlackBox?.log?.(checkpoint, {
+      transferToken: payload?.transferToken || null,
+      itemName: payload?.originalName || payload?.name || null,
+      relativePath: payload?.relativePath || null,
+      handler: "page-drop-bridge.js",
+      ...details
+    });
+  }
+
+  diagnostic("receiver-initialized", null, { result: "ok", receiverGeneration: GENERATION, pathname: location.pathname });
+
   function extensionContextAvailable() {
     try {
       return Boolean(globalThis.chrome?.runtime?.id);
@@ -198,16 +210,22 @@
     return [...local, ...remaining];
   }
 
-  function assignFile(input, file) {
-    if (!inputAccepts(input, file)) return false;
+  function assignFile(input, file, payload) {
+    if (!inputAccepts(input, file)) {
+      diagnostic("receiver-input-assignment-result", payload, { result: "ignored", reason: "accept-rejected", accept: input?.accept || "" });
+      return false;
+    }
     try {
       const transfer = new DataTransfer();
       transfer.items.add(file);
       input.files = transfer.files;
       input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
       input.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-      return input.files?.length === 1;
-    } catch {
+      const assigned = input.files?.length === 1;
+      diagnostic("receiver-input-assignment-result", payload, { result: assigned ? "ok" : "failed", resultingFilesLength: input.files?.length || 0, accept: input.accept || "", eventsDispatched: ["input", "change"] });
+      return assigned;
+    } catch (error) {
+      diagnostic("receiver-input-assignment-result", payload, { result: "failed", exception: { name: error?.name, message: error?.message, stack: error?.stack } });
       return false;
     }
   }
@@ -228,14 +246,17 @@
     };
   }
 
-  function dispatchDrop(target, file, originalEvent) {
+  function dispatchDrop(target, file, originalEvent, payload) {
     if (!(target instanceof EventTarget)) return false;
     try {
-      target.dispatchEvent(new DragEvent("dragenter", dragInit(file, originalEvent)));
-      target.dispatchEvent(new DragEvent("dragover", dragInit(file, originalEvent)));
-      target.dispatchEvent(new DragEvent("drop", dragInit(file, originalEvent)));
+      for (const type of ["dragenter", "dragover", "drop"]) {
+        diagnostic("receiver-synthetic-dispatch-attempt", payload, { result: "pending", eventOrigin: "synthetic", syntheticEventType: type });
+        const accepted = target.dispatchEvent(new DragEvent(type, dragInit(file, originalEvent)));
+        diagnostic("receiver-synthetic-dispatch-result", payload, { result: "ok", eventOrigin: "synthetic", syntheticEventType: type, dispatchReturned: accepted });
+      }
       return true;
-    } catch {
+    } catch (error) {
+      diagnostic("receiver-synthetic-dispatch-result", payload, { result: "failed", eventOrigin: "synthetic", exception: { name: error?.name, message: error?.message, stack: error?.stack } });
       return false;
     }
   }
@@ -268,6 +289,7 @@
       if (!activeBridge()) throw new Error("FileChute reloaded while this page was open. Try the drop again.");
 
       try {
+        diagnostic("receiver-byte-request-started", payload, { result: "pending", requestAttempt: attempt + 1 });
         const response = await chrome.runtime.sendMessage({
           type: "filechute-read-dragged-file-v1",
           transferToken: payload.transferToken,
@@ -276,7 +298,11 @@
           mime: payload.mime || ""
         });
 
-        if (response?.ok) return response;
+        if (response?.ok) {
+          diagnostic("receiver-byte-request-result", payload, { result: "ok", requestAttempt: attempt + 1, byteSize: response.size });
+          return response;
+        }
+        diagnostic("receiver-byte-request-result", payload, { result: "failed", requestAttempt: attempt + 1, error: response?.error || null });
         const message = response?.error || "FileChute could not read that file.";
         lastError = new Error(message);
         if (!/drag is no longer available|not registered|no longer available/i.test(message)) throw lastError;
@@ -293,21 +319,24 @@
   }
 
   async function receive(payload, event) {
+    diagnostic("receiver-claim", payload, { result: "claimed", eventOrigin: event.isTrusted ? "physical" : "synthetic" });
     if (payload.kind === "directory") throw new Error("This website upload target accepts files, not a FileChute directory.");
     if (!payload.transferToken || !payload.relativePath) throw new Error("Reload FileChute and drag this item again.");
 
     const response = await readDraggedFile(payload);
     const file = base64File(response);
+    diagnostic("receiver-file-reconstructed", payload, { result: "ok", file: { name: file.name, type: file.type, size: file.size } });
     const inputs = candidateInputs(event.target).filter((candidate) => inputAccepts(candidate, file));
     const input = inputs[0];
+    diagnostic("receiver-input-candidates", payload, { result: input ? "ok" : "ignored", candidateCount: inputs.length, selected: input ? { accept: input.accept || "", disabled: input.disabled } : null });
 
-    if (input && assignFile(input, file)) {
+    if (input && assignFile(input, file, payload)) {
       clearPageDropState(event.target, event);
       showToast(`Sent ${file.name} to this page.`);
       return;
     }
 
-    if (dispatchDrop(event.target, file, event)) {
+    if (dispatchDrop(event.target, file, event, payload)) {
       clearPageDropState(event.target, event);
       showToast(`Passed ${file.name} to this drop target.`);
       return;
@@ -324,6 +353,7 @@
 
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    diagnostic("receiver-dragover-policy", null, { result: "claimed", eventOrigin: event.isTrusted ? "physical" : "synthetic", preventDefaultCalled: true, types, dropEffect: event.dataTransfer?.dropEffect || null });
   }, true);
 
   document.addEventListener("drop", (event) => {
@@ -331,13 +361,20 @@
     const payload = parsePayload(event.dataTransfer);
     if (!payload) return;
 
-    if (hasUsableNativeFile(event.dataTransfer)) return;
+    diagnostic("receiver-ticket-detected", payload, { result: "ok", eventOrigin: event.isTrusted ? "physical" : "synthetic", ticketFormat: [...(event.dataTransfer?.types || [])].includes(FILECHUTE_DRAG_TYPE) ? "custom-or-text" : "text", transfer: globalThis.FileChuteBlackBox?.transferSnapshot?.(event.dataTransfer) || null });
+
+    if (hasUsableNativeFile(event.dataTransfer)) {
+      diagnostic("receiver-native-file-delegated", payload, { result: "ok", usableFileCount: nativeFiles(event.dataTransfer).length });
+      return;
+    }
 
     event.preventDefault();
     event.stopImmediatePropagation();
+    diagnostic("receiver-physical-drop-claimed", payload, { result: "claimed", eventOrigin: event.isTrusted ? "physical" : "synthetic", preventDefaultCalled: true, propagationStopped: true });
     showToast(`FileChute ticket caught: ${payload.originalName || payload.name || "item"}`);
 
-    void receive(payload, event).catch((error) => {
+    void receive(payload, event).then(() => diagnostic("receiver-handoff-completed", payload, { result: "ok" })).catch((error) => {
+      diagnostic("receiver-handoff-completed", payload, { result: "failed", exception: { name: error?.name, message: error?.message, stack: error?.stack } });
       clearPageDropState(event.target, event);
       console.error("FileChute website handoff failed", error);
       showToast(error?.message || "Could not send that FileChute file to this page.", true);

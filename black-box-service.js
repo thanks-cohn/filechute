@@ -72,6 +72,12 @@ function serviceRecord(checkpoint, message, sender, extra = {}) {
   });
 }
 
+globalThis.FileChuteServiceBlackBox = {
+  append(checkpoint, message = {}, extra = {}) {
+    serviceRecord(checkpoint, message, null, { handler: "service-worker.js", ...extra });
+  }
+};
+
 const observedTransferMessages = new Set([
   "filechute-register-transfer-v1",
   "filechute-read-dragged-file-v1",

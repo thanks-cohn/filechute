@@ -424,13 +424,26 @@ function normalizedTransferFile(file, name) {
 
 function startDrag({ event, row, preview, payload, file }) {
   const transfer = event.dataTransfer;
+  globalThis.FileChuteBlackBox?.log?.("sender-start-drag-entered", {
+    transferToken: payload?.transferToken || null,
+    itemName: payload?.originalName || payload?.name || null,
+    relativePath: payload?.relativePath || null,
+    result: transfer ? "ok" : "failed",
+    dataTransferPresent: Boolean(transfer),
+    handler: "sidepanel.js:startDrag"
+  });
   if (!transfer) return;
   row.classList.add("dragging");
   writeFileChuteDrag(transfer, payload, file);
   if (preview && !preview.hidden) {
     try {
       transfer.setDragImage(preview, thumbnailSize / 2, thumbnailSize / 2);
-    } catch {}
+      globalThis.FileChuteBlackBox?.log?.("sender-drag-image-result", { transferToken: payload?.transferToken || null, result: "ok", handler: "sidepanel.js:startDrag" });
+    } catch (error) {
+      globalThis.FileChuteBlackBox?.log?.("sender-drag-image-result", { transferToken: payload?.transferToken || null, result: "failed", exception: { name: error?.name, message: error?.message, stack: error?.stack }, handler: "sidepanel.js:startDrag" });
+    }
+  } else {
+    globalThis.FileChuteBlackBox?.log?.("sender-drag-image-result", { transferToken: payload?.transferToken || null, result: "ignored", reason: "preview-unavailable", handler: "sidepanel.js:startDrag" });
   }
 }
 

@@ -28,6 +28,13 @@
   let lastDragoverLog = 0;
   let lastKnownToken = null;
   let lastKnownName = null;
+  let activeAttemptId = null;
+  let attemptNumber = Number(sessionStorage.getItem(`${sessionKey}-attempt`) || 0);
+  let eventNumber = 0;
+  let previousAttempt = null;
+  let attemptStartedAt = null;
+  let dragstartObserved = false;
+  let dragendObserved = false;
 
   function targetDescriptor(target) {
     if (!(target instanceof Element)) return null;
@@ -117,7 +124,10 @@
       at: new Date().toISOString(),
       performanceNow: Number(performance.now().toFixed(3)),
       sessionId,
+      attemptId: details.attemptId || activeAttemptId,
+      attemptNumber: details.attemptNumber || (activeAttemptId ? attemptNumber : null),
       source,
+      component: source,
       checkpoint,
       transferToken: details.transferToken || lastKnownToken || null,
       itemName: details.itemName || lastKnownName || null,
@@ -125,6 +135,8 @@
       hasFocus: document.hasFocus(),
       userAgent: navigator.userAgent,
       platform: navigator.userAgentData?.platform || navigator.platform || null,
+      extensionId: chrome.runtime.id,
+      manifestVersion: chrome.runtime.getManifest().version,
       ...details
     };
     try {
@@ -141,6 +153,9 @@
       clientY: Number.isFinite(event?.clientY) ? event.clientY : null,
       button: Number.isFinite(event?.button) ? event.button : null,
       defaultPrevented: Boolean(event?.defaultPrevented),
+      eventId: `${sessionId}:${++eventNumber}`,
+      eventOrigin: event?.isTrusted === false ? "synthetic" : "physical",
+      handler: "black-box.js:capture",
       transfer: transferData,
       transferToken: transferData?.payload?.transferToken || null,
       itemName: transferData?.payload?.originalName || null
@@ -150,10 +165,44 @@
   document.addEventListener("pointerdown", (event) => {
     const target = event.target instanceof Element ? event.target : null;
     if (source === "filechute-sidepanel" && !target?.closest("#entries")) return;
+    if (source === "filechute-sidepanel") {
+      if (activeAttemptId && dragstartObserved && !dragendObserved) {
+        log("previous-attempt-missing-dragend", {
+          result: "failed",
+          failureSignature: "W-DRAG-002:next-pointerdown-after-missing-dragend"
+        });
+        previousAttempt = { dragendObserved: false, dropEffect: null, finishedAt: performance.now() };
+      }
+      attemptNumber += 1;
+      try { sessionStorage.setItem(`${sessionKey}-attempt`, String(attemptNumber)); } catch {}
+      activeAttemptId = `${sessionId}:${attemptNumber}`;
+      attemptStartedAt = performance.now();
+      dragstartObserved = false;
+      dragendObserved = false;
+    }
     logEvent("pointerdown", event, { allowRead: false });
+    if (source === "filechute-sidepanel") log("attempt-started", {
+      result: "ok",
+      elapsedSincePreviousAttemptMs: previousAttempt ? Number((performance.now() - previousAttempt.finishedAt).toFixed(3)) : null,
+      previousAttempt: previousAttempt ? {
+        dragendObserved: previousAttempt.dragendObserved,
+        dropEffect: previousAttempt.dropEffect
+      } : null
+    });
+    if (source === "filechute-sidepanel") setTimeout(() => {
+      if (!dragstartObserved && activeAttemptId) log("dragstart-watchdog", {
+        result: "timeout",
+        failureSignature: "W-DRAG-002:pointerdown-without-dragstart",
+        timeoutMs: 1500
+      });
+    }, 1500);
   }, true);
 
-  document.addEventListener("dragstart", (event) => logEvent("dragstart", event), true);
+  document.addEventListener("dragstart", (event) => {
+    dragstartObserved = true;
+    logEvent("dragstart", event);
+  }, true);
+  document.addEventListener("pointerup", (event) => logEvent("pointerup", event, { allowRead: false }), true);
   document.addEventListener("dragenter", (event) => logEvent("dragenter", event, { allowRead: false }), true);
   document.addEventListener("dragover", (event) => {
     const now = performance.now();
@@ -164,6 +213,16 @@
   document.addEventListener("drop", (event) => logEvent("drop", event), true);
   document.addEventListener("dragend", (event) => {
     logEvent("dragend", event);
+    if (source === "filechute-sidepanel") {
+      dragendObserved = true;
+      const dropEffect = event.dataTransfer?.dropEffect || "none";
+      log("attempt-ended", {
+        result: dropEffect === "none" ? "failed" : "ok",
+        dropEffect,
+        durationMs: attemptStartedAt === null ? null : Number((performance.now() - attemptStartedAt).toFixed(3))
+      });
+      previousAttempt = { dragendObserved: true, dropEffect, finishedAt: performance.now() };
+    }
     lastKnownToken = null;
     lastKnownName = null;
   }, true);
@@ -223,7 +282,13 @@
     log("blackbox-cleared");
   }
 
-  globalThis.FileChuteBlackBox = { log, export: exportLog, clear: clearLog };
+  globalThis.FileChuteBlackBox = {
+    log,
+    transferSnapshot,
+    currentAttempt: () => ({ attemptId: activeAttemptId, attemptNumber }),
+    export: exportLog,
+    clear: clearLog
+  };
 
   if (source === "filechute-sidepanel") {
     const mount = () => {
