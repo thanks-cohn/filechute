@@ -74,6 +74,15 @@
       </section>
 
       <section class="settings-section">
+        <h3>Chutty support</h3>
+        <label class="setting-stack" for="chutty-support-url">
+          <span>Donation / support URL</span>
+          <input id="chutty-support-url" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://…">
+          <small>Optional. Clicking Chutty reveals the support button. Leave this blank to keep the button visible but disabled until you choose a destination.</small>
+        </label>
+      </section>
+
+      <section class="settings-section">
         <h3>Visible items</h3>
         <div class="preset-row" aria-label="Visibility presets">
           <button type="button" data-visibility-preset="everything">Everything</button>
@@ -179,11 +188,13 @@
     </form>
   </dialog>
 
+  <script src="rebrand-compat.js"></script>
   <script type="module" src="single-destination-drop.js"></script>
   <script type="module" src="ui-enhancements.js"></script>
   <script type="module" src="directory-visibility.js"></script>
   <script type="module" src="receive-drops.js"></script>
   <script type="module" src="folder-picker.js"></script>
+  <script type="module" src="support-settings.js"></script>
   <script type="module" src="sidepanel.js"></script>
   <script type="module" src="shelf-live-refresh.js"></script>
   <script type="module" src="directory-drag.js"></script>
