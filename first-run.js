@@ -1,4 +1,4 @@
-import { readStored } from "./storage.js";
+import { readStored, removeStored } from "./storage.js";
 import {
   externalMetadataStatus,
   getExternalMetadataDirectory
@@ -45,6 +45,12 @@ async function requestPermission(handle, mode = "readwrite") {
   }
 }
 
+function announceRootHandle(handle) {
+  window.dispatchEvent(new CustomEvent("filechute:root-handle-ready", {
+    detail: { handle: handle || null }
+  }));
+}
+
 function showCompatibilityFailure() {
   if (typeof window.showDirectoryPicker === "function") return false;
   setStatus("This Chromium build does not expose the File System Access API FileChute needs.", true);
@@ -77,6 +83,13 @@ async function renderRootReconnect() {
     reconnect.style.marginTop = "12px";
     reconnect.textContent = `Reconnect ${root.name || "folder"}`;
 
+    const forget = document.createElement("button");
+    forget.id = "filechute-forget-root";
+    forget.type = "button";
+    forget.style.marginTop = "9px";
+    forget.style.marginLeft = "8px";
+    forget.textContent = "Forget remembered folder";
+
     const chooseDifferent = document.createElement("div");
     chooseDifferent.style.marginTop = "9px";
     chooseDifferent.style.opacity = "0.72";
@@ -87,15 +100,33 @@ async function renderRootReconnect() {
       reconnect.textContent = "Waiting for Chromium…";
       if (await requestPermission(root)) {
         setStatus(`Reconnected ${root.name || "folder"}.`);
-        location.reload();
+
+        // Do not reload the side panel here. On Windows Chromium, a forced
+        // reload can immediately turn the restored grant back into "prompt".
+        // Hand the now-authorized live handle to the existing shelf instead.
+        announceRootHandle(root);
         return;
       }
       reconnect.disabled = false;
       reconnect.textContent = `Reconnect ${root.name || "folder"}`;
-      setStatus("Chromium did not restore that folder permission. You can try again or choose a different folder.", true);
+      setStatus("Chromium did not restore that folder permission. Try again, choose a different folder, or forget this remembered folder.", true);
     });
 
-    empty.append(message, reconnect, chooseDifferent);
+    forget.addEventListener("click", async () => {
+      forget.disabled = true;
+      try {
+        await removeStored(ROOT_HANDLE_KEY);
+        announceRootHandle(null);
+        if (chooseRootButton) chooseRootButton.textContent = "Choose folder";
+        setStatus("Forgot the remembered folder. Choose a local folder to continue.");
+      } catch (error) {
+        console.error("Could not forget FileChute root folder", error);
+        forget.disabled = false;
+        setStatus("Could not forget the remembered folder.", true);
+      }
+    });
+
+    empty.append(message, reconnect, forget, chooseDifferent);
     if (chooseRootButton) chooseRootButton.textContent = "Choose different folder";
   } finally {
     rootReconnectRendering = false;
