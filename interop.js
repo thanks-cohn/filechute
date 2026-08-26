@@ -1,7 +1,7 @@
 export const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
 export const FILECHUTE_VERSION = 1;
 
-export function makeFileChutePayload({
+export function makeChutePayload({
   kind,
   name,
   originalName = name,
@@ -18,6 +18,7 @@ export function makeFileChutePayload({
   return {
     protocol: "filechute-item",
     version: FILECHUTE_VERSION,
+    provider: "Chute",
     kind,
     name,
     originalName,
@@ -42,10 +43,10 @@ function validWebUrl(value) {
   }
 }
 
-export function writeFileChuteDrag(transfer, payload, file = null) {
+export function writeChuteDrag(transfer, payload, file = null) {
   transfer.effectAllowed = "copy";
 
-  // Put the real File item into DataTransfer before adding FileChute's private
+  // Put the real File item into DataTransfer before adding Chute's private
   // metadata flavor. Some browser upload surfaces inspect the earliest/native
   // item and are markedly more reliable when Files is the primary flavor.
   let fileAdded = false;
@@ -70,7 +71,7 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
     }).catch(() => {});
   }
 
-  // When FileChute has the actual bytes, expose the drag as a file first and
+  // When Chute has the actual bytes, expose the drag as a file first and
   // do not advertise stale provenance URLs as ordinary text. Google and Yandex
   // can otherwise choose the text/uri-list flavor instead of uploading the
   // image. Keep source URLs only as a fallback when Chromium refused the File.
@@ -85,7 +86,7 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
   }
 }
 
-export function readFileChuteDrag(transfer) {
+export function readChuteDrag(transfer) {
   try {
     const raw = transfer.getData(FILECHUTE_DRAG_TYPE);
     if (!raw) return null;

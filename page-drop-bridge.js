@@ -59,7 +59,7 @@
     const binary = atob(String(response?.base64 || ""));
     const bytes = new Uint8Array(binary.length);
     for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-    return new File([bytes], response?.name || "FileChute file", {
+    return new File([bytes], response?.name || "Chute file", {
       type: response?.type || "application/octet-stream",
       lastModified: Number(response?.lastModified) || Date.now()
     });
@@ -91,8 +91,8 @@
     toast.textContent = message;
     toast.style.border = error ? "1px solid rgba(224,93,68,.65)" : "1px solid rgba(255,255,255,.14)";
     toast.style.opacity = "1";
-    clearTimeout(globalThis.__filechutePageDropToastTimer);
-    globalThis.__filechutePageDropToastTimer = setTimeout(() => { toast.style.opacity = "0"; }, 2600);
+    clearTimeout(globalThis.__chutePageDropToastTimer);
+    globalThis.__chutePageDropToastTimer = setTimeout(() => { toast.style.opacity = "0"; }, 2600);
   }
 
   function inputAccepts(input, file) {
@@ -218,7 +218,7 @@
 
     for (let attempt = 0; attempt < delays.length; attempt += 1) {
       if (delays[attempt]) await wait(delays[attempt]);
-      if (!activeBridge()) throw new Error("FileChute reloaded while this page was open. Try the drop again.");
+      if (!activeBridge()) throw new Error("Chute reloaded while this page was open. Try the drop again.");
 
       try {
         const response = await chrome.runtime.sendMessage({
@@ -230,24 +230,24 @@
         });
 
         if (response?.ok) return response;
-        const message = response?.error || "FileChute could not read that file.";
+        const message = response?.error || "Chute could not read that file.";
         lastError = new Error(message);
         if (!/drag is no longer available|not registered|no longer available/i.test(message)) throw lastError;
       } catch (error) {
         lastError = error;
         if (/extension context invalidated/i.test(String(error?.message || error))) {
-          throw new Error("FileChute reloaded while this page was open. Try the drop again.");
+          throw new Error("Chute reloaded while this page was open. Try the drop again.");
         }
         if (!/drag is no longer available|not registered|no longer available/i.test(String(error?.message || error))) throw error;
       }
     }
 
-    throw lastError || new Error("FileChute could not read that file.");
+    throw lastError || new Error("Chute could not read that file.");
   }
 
   async function receive(payload, event) {
-    if (payload.kind === "directory") throw new Error("This website upload target accepts files, not a FileChute directory.");
-    if (!payload.transferToken || !payload.relativePath) throw new Error("Reload FileChute and drag this item again.");
+    if (payload.kind === "directory") throw new Error("This website upload target accepts files, not a Chute directory.");
+    if (!payload.transferToken || !payload.relativePath) throw new Error("Reload Chute and drag this item again.");
 
     const response = await readDraggedFile(payload);
     const file = base64File(response);
@@ -297,8 +297,8 @@
 
     void receive(payload, event).catch((error) => {
       clearPageDropState(event.target, event);
-      console.error("FileChute website handoff failed", error);
-      showToast(error?.message || "Could not send that FileChute file to this page.", true);
+      console.error("Chute website handoff failed", error);
+      showToast(error?.message || "Could not send that Chute file to this page.", true);
     });
   }, true);
 })();

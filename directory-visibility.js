@@ -78,14 +78,14 @@ function normalizeMediaPriority(value) {
 
 function applyViewPolicy(root = document) {
   if (!entries) return;
-  entries.dataset.filechuteDirectoryPosition = directoryPosition;
-  entries.dataset.filechuteMediaPriority = mediaPriority;
+  entries.dataset.chuteDirectoryPosition = directoryPosition;
+  entries.dataset.chuteMediaPriority = mediaPriority;
 
   for (const row of root.querySelectorAll?.(".entry") || []) {
     const isDirectory = row.classList.contains("directory");
 
     if (isDirectory) {
-      row.dataset.filechuteDirectory = "true";
+      row.dataset.chuteDirectory = "true";
       row.hidden = !showDirectories;
       const name = row.querySelector(".entry-name-text") || row.querySelector(".entry-name");
       if (name) name.title = "Click to open · drag to FrameChute as a gallery";
@@ -93,13 +93,13 @@ function applyViewPolicy(root = document) {
     }
 
     const category = fileCategory(rowName(row));
-    row.dataset.filechuteMediaKind = category;
+    row.dataset.chuteMediaKind = category;
     row.hidden = !categoryVisible(category);
   }
 }
 
 const style = document.createElement("style");
-style.dataset.filechuteDirectoryVisibility = "true";
+style.dataset.chuteDirectoryVisibility = "true";
 style.textContent = `
   #entries[data-filechute-directory-position="top"] > .entry.directory {
     order: -100000 !important;
@@ -108,7 +108,7 @@ style.textContent = `
     order: 100000 !important;
   }
 
-  /* The default mixed mode deliberately leaves FileChute's existing file
+  /* The default mixed mode deliberately leaves Chute's existing file
      ordering untouched. Priority modes only group the currently visible page. */
   #entries[data-filechute-media-priority="images"] > .entry[data-filechute-media-kind="image"] {
     order: -50000;

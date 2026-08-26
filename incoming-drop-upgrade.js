@@ -4,8 +4,8 @@ import { mergeMetadata } from "./metadata-store.js";
 const ROOT_HANDLE_KEY = "filechute-root-handle";
 const RESTORE_PATH_KEY = "filechute-restore-path-v1";
 const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
-const CHUTE_DRAG_TYPE = "application/x-chute-item";
-const FRAMECHUTE_DRAG_TYPE = "application/x-framechute-item+json";
+const CHUTE_DRAG_TYPE = "application/x-filechute-item";
+const FRAMECHUTE_DRAG_TYPE = "application/x-framefilechute-item+json";
 
 const statusElement = document.querySelector("#status");
 const breadcrumbs = document.querySelector("#breadcrumbs");
@@ -68,9 +68,9 @@ async function rootHandle() {
 
 async function resolveDirectory(pathNames) {
   const root = await rootHandle();
-  if (!root || root.kind !== "directory") throw new Error("Choose a FileChute folder first.");
+  if (!root || root.kind !== "directory") throw new Error("Choose a Chute folder first.");
   if (!(await requestPermission(root))) {
-    throw new Error(`Chromium needs permission for ${root.name || "the FileChute folder"}. Reconnect it and try again.`);
+    throw new Error(`Chromium needs permission for ${root.name || "the Chute folder"}. Reconnect it and try again.`);
   }
 
   let directory = root;
@@ -244,7 +244,7 @@ function parseFrameChutePayload(transfer) {
     const raw = transfer?.getData(FRAMECHUTE_DRAG_TYPE);
     if (!raw) return null;
     const payload = JSON.parse(raw);
-    if (payload?.protocol !== "framechute-item" || payload?.version !== 1) return null;
+    if (payload?.protocol !== "framefilechute-item" || payload?.version !== 1) return null;
     return payload;
   } catch {
     return null;
@@ -283,7 +283,7 @@ function bytesFromBase64(value) {
 
 async function pageBlobResource(url, suggestedName = "browser-image") {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
-  if (!tab?.id) throw new Error("FileChute could not identify the page that created this temporary image.");
+  if (!tab?.id) throw new Error("Chute could not identify the page that created this temporary image.");
 
   try {
     const response = await chrome.tabs.sendMessage(tab.id, {
@@ -323,10 +323,10 @@ async function pageBlobResource(url, suggestedName = "browser-image") {
       return new File([bytesFromBase64(response.base64)], name, { type, lastModified: Date.now() });
     }
   } catch (error) {
-    console.debug("FileChute could not read the page-owned blob directly", error);
+    console.debug("Chute could not read the page-owned blob directly", error);
   }
 
-  throw new Error("This page supplied a temporary blob image that FileChute could not read. Keep the source tab active and try the drag again.");
+  throw new Error("This page supplied a temporary blob image that Chute could not read. Keep the source tab active and try the drag again.");
 }
 
 function filenameFromDisposition(value) {
@@ -395,7 +395,7 @@ async function receiveBrowserResource(resource, targetPathNames) {
     sourceUrl: /^https?:/i.test(resource.value) ? resource.value : null,
     parentPageUrl: parentPageUrl()
   });
-  return `Saved ${name} into FileChute.`;
+  return `Saved ${name} into Chute.`;
 }
 
 async function receiveFrameChute(payload, transfer, targetPathNames) {
@@ -408,7 +408,7 @@ async function receiveFrameChute(payload, transfer, targetPathNames) {
       await writeFile(destination, targetPathNames, file, file.name);
       count += 1;
     }
-    return `Copied ${count} FrameChute file${count === 1 ? "" : "s"} into FileChute.`;
+    return `Copied ${count} FrameChute file${count === 1 ? "" : "s"} into Chute.`;
   }
 
   if (payload.sourceUrl && /^https?:/i.test(payload.sourceUrl)) {
@@ -416,13 +416,13 @@ async function receiveFrameChute(payload, transfer, targetPathNames) {
   }
 
   if (!payload.sourceExtensionId || !payload.transferToken) {
-    throw new Error("Reload FrameChute and drag this media item again so FileChute can request the source.");
+    throw new Error("Reload FrameChute and drag this media item again so Chute can request the source.");
   }
 
   let response;
   try {
     response = await chrome.runtime.sendMessage(payload.sourceExtensionId, {
-      type: "framechute-read-dragged-resource-v1",
+      type: "framefilechute-read-dragged-resource-v1",
       transferToken: payload.transferToken
     });
   } catch (error) {
@@ -498,12 +498,12 @@ document.addEventListener("drop", (event) => {
   void work
     .then((message) => preserveCurrentPathAndReload(message))
     .catch((error) => {
-      console.error("FileChute enhanced incoming drop failed", {
+      console.error("Chute enhanced incoming drop failed", {
         name: error?.name,
         message: error?.message,
         stack: error?.stack,
         error
       });
-      setStatus(error?.message || "Could not save that browser resource into FileChute.", true);
+      setStatus(error?.message || "Could not save that browser resource into Chute.", true);
     });
 }, true);
