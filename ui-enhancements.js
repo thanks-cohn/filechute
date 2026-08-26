@@ -218,8 +218,14 @@ function preserveCurrentPath() {
 function scheduleReload() {
   if (reloadScheduled) return;
   reloadScheduled = true;
-  preserveCurrentPath();
-  setTimeout(() => location.reload(), 120);
+
+  // Do not reload the side-panel document just because the directory changed.
+  // Windows Chromium can drop a user-restored File System Access grant when
+  // that document is destroyed. Ask sidepanel.js to refresh in place instead.
+  setTimeout(() => {
+    reloadScheduled = false;
+    window.dispatchEvent(new CustomEvent("filechute:filesystem-changed"));
+  }, 120);
 }
 
 function chuteNameFromToken(value) {
@@ -296,10 +302,14 @@ function normalizeNameLine(row) {
       event.preventDefault();
       event.stopPropagation();
     });
-    /* The grip is now physically inside .entry-name. Its native dragstart
-       bubbles to sidepanel.js's real filename drag handler, so there is no
-       synthetic nested DragEvent and no stranded grabbing cursor. */
-    grip.addEventListener("dragstart", () => row.classList.add("dragging"));
+    /* sidepanel.js already wires the grip itself. Because the grip lives inside
+       .entry-name, allowing dragstart to bubble would run the filename handler
+       a second time and write the same DataTransfer twice. Windows Chromium is
+       especially unhappy with that. Keep exactly one native drag payload. */
+    grip.addEventListener("dragstart", (event) => {
+      row.classList.add("dragging");
+      event.stopPropagation();
+    });
     grip.addEventListener("dragend", resetDragUi);
   }
 }
