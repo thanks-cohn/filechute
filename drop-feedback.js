@@ -8,7 +8,7 @@ const status = document.querySelector("#status");
 const breadcrumbs = document.querySelector("#breadcrumbs");
 
 const style = document.createElement("style");
-style.dataset.chuteDropFeedback = "true";
+style.dataset.filechuteDropFeedback = "true";
 style.textContent = `
   body.filechute-drop-active::before {
     content: attr(data-filechute-drop-label) !important;
@@ -139,7 +139,7 @@ function incomingTransfer(transfer) {
   if (!transfer) return false;
   const types = [...(transfer.types || [])];
   if (types.includes("application/x-filechute-item+json")) return false;
-  if (types.includes("application/x-framefilechute-item+json") || types.includes("application/x-filechute-item")) return true;
+  if (types.includes("application/x-framechute-item+json") || types.includes("application/x-chute-item")) return true;
   if ([...transfer.items || []].some((item) => item.kind === "file")) return true;
   return types.some((type) => ["text/html", "text/uri-list", "text/plain", "DownloadURL"].includes(type));
 }
@@ -163,7 +163,7 @@ function markHover(event) {
   else target.element?.classList.add("drop-target-current");
 
   document.body.classList.add("filechute-drop-active");
-  document.body.dataset.chuteDropLabel = `Drop into ${target.name}`;
+  document.body.dataset.filechuteDropLabel = `Drop into ${target.name}`;
   return target;
 }
 
