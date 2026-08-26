@@ -1,33 +1,29 @@
 # Chute
 
-Chute is a local-first Chromium file shelf. Choose one folder and that exact directory becomes Chute's hard root: Chute can browse its children, but it cannot move above it or inspect unrelated storage.
+Chute is a local-first Chromium extension that turns one user-selected folder into a browser shelf.
 
-## What it does
+The shelf keeps the mature FileChute engine for navigation, previews, search, pagination, resize, provenance, drag-out, and FrameChute interoperability while presenting the product as **Chute**.
 
-- Remembers the selected `FileSystemDirectoryHandle` in IndexedDB and offers a reconnect flow when Chromium changes permission to `prompt`.
-- Browses child folders with Back, Home, breadcrumbs, natural sorting, filters, and pagination.
-- Searches recursively inside the selected root, showing root-relative locations and cancelling stale searches.
-- Generates local image thumbnails and browser-decodable video posters, with object-URL cleanup and fallback icons.
-- Resizes images locally while preserving originals and using duplicate-safe names in `resized/` (without creating `resized/resized/`).
-- Accepts real files into the current shelf directory or a visible child folder, without overwriting duplicates.
-- Drags a fresh real `File` out first, then adds Chute/FileChute interoperability metadata for compatible receivers and FrameChute.
-- Adds Chutty to the targeted Google Images, Yandex Images, and ChatGPT surfaces. Chutty's delayed flyout opens the shelf/settings, and direct drops are written predictably to the selected root.
+## Chutty
 
-## Use
+Chutty is the floating Chute mascot on supported image surfaces.
 
-1. Load this directory as an unpacked extension from `chrome://extensions` (Developer mode).
-2. Open **Chute** and select a folder.
-3. Browse or search beside the browser. Drag files in or out as needed.
-4. On supported sites, hover Chutty for its small flyout or drop a file/image directly onto the mascot to save it at the root.
+- Drop a local file or browser image onto Chutty to hand it to the same selected Chute root.
+- Click Chutty to cycle enabled mascot animations.
+- The Chutty flyout provides explicit Open Chute, Settings, and Hide controls.
+- The Support Chutty button uses Chute's built-in official support destination; end users cannot replace that URL.
+- Chutty visibility, position, hover behavior, click cycling, support visibility, enabled animations, and click-animation order are managed from Chute Settings.
 
-Chute uses the browser's File System Access API. It has no account, cloud storage, local HTTP server, daemon, Python helper, native messaging component, or filesystem-wide scanner.
+Animation definitions live under `animations/assets/<animation>/animation.js`. Each directory owns its sequence timing and may reference images stored in that same directory. See `animations/README.md`.
 
-## Browser-image capture
+## Privacy and filesystem model
 
-Capture runs only in response to a user drag/drop. Real dropped files are encoded into a bounded JSON-safe transfer for extension messaging; local shelf drag-out remains a real `File`. URL-only browser images are fetched only when readable and only after the drop. The bridge rejects captures above 32 MiB and reports failure through Chutty.
+Chute uses the File System Access API and only works inside the exact directory selected by the user. It does not scan arbitrary filesystem locations, does not require a localhost helper, and does not restore the old native/loopback Chute backend.
 
-## Permissions
+Persistent internal `filechute-*` keys and established interoperability protocol strings may remain in the implementation for upgrade compatibility. They are implementation contracts, not user-facing branding.
 
-The MV3 extension uses `storage`, `sidePanel`, `activeTab`, and `scripting`. Content scripts are limited to ChatGPT, Google, and Yandex patterns. Optional HTTP(S) origin access supports user-triggered retrieval of dragged browser resources that the content script cannot read directly.
+## Development
 
-See [PRIVACY.md](PRIVACY.md) and [ARCHITECTURE.md](ARCHITECTURE.md).
+Load the repository root as an unpacked Chromium extension. The folder you load is the folder containing `manifest.json`.
+
+The current hardening work lives on `fix/chute-pr24-hardening` and is tracked by PR #25.
