@@ -1,4 +1,4 @@
-import { readStored } from "./storage.js";
+import { readStored, removeStored } from "./storage.js";
 
 const STANDALONE_WIDTH = 390;
 const STANDALONE_HEIGHT = 760;
@@ -6,6 +6,7 @@ const STANDALONE_WINDOW_KEY = "filechute-standalone-window-id";
 const ROOT_HANDLE_KEY = "filechute-root-handle";
 const LAUNCH_MODE_KEY = "filechute-launch-mode";
 const TRANSFER_PREFIX = "filechute-transfer-v1:";
+const TRANSFER_FILE_CACHE_KEY = "filechute-transfer-file-cache-v1";
 const GALLERY_SOURCE_PREFIX = "filechute-gallery-source-v1:";
 const MAX_INLINE_TRANSFER_BYTES = 48 * 1024 * 1024;
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "ico", "apng"]);
@@ -102,6 +103,57 @@ function gallerySourceKey(token) {
   return `${GALLERY_SOURCE_PREFIX}${String(token || "")}`;
 }
 
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function ensureActivePageDropBridge() {
+  if (!chrome.scripting?.executeScript || !chrome.tabs?.query) return false;
+
+  try {
+    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const tab = tabs.find((candidate) => Number.isInteger(candidate?.id));
+    if (!tab?.id) return false;
+
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["page-drop-bridge.js"]
+    });
+    return true;
+  } catch (error) {
+    // chrome:// pages, the Web Store, and pages without activeTab/host access
+    // cannot be injected. Static ChatGPT/Google/Yandex bridges still work.
+    console.debug("FileChute could not prepare this page for bridged drop", error);
+    return false;
+  }
+}
+
+async function cachedTransferFile(token) {
+  const wanted = String(token || "");
+  if (!wanted) return null;
+
+  // The dragstart handler writes the cache and registers the token in parallel.
+  // Give IndexedDB a brief chance to finish before falling back to reopening
+  // the file through the saved filesystem handle.
+  const delays = [0, 30, 80, 160, 260, 420];
+  for (const delay of delays) {
+    if (delay) await wait(delay);
+    let record = null;
+    try {
+      record = await readStored(TRANSFER_FILE_CACHE_KEY);
+    } catch {}
+
+    const file = record?.file;
+    const usable = file && typeof file.arrayBuffer === "function" && typeof file.name === "string";
+    if (String(record?.token || "") === wanted && usable) {
+      await removeStored(TRANSFER_FILE_CACHE_KEY).catch(() => {});
+      return file;
+    }
+  }
+
+  return null;
+}
+
 async function registerTransfer(message) {
   const token = String(message?.token || "");
   const relativePath = String(message?.relativePath || "");
@@ -115,6 +167,11 @@ async function registerTransfer(message) {
   };
 
   await chrome.storage.session.set({ [transferKey(token)]: record });
+
+  // Prepare the currently active browser page to consume FileChute's token.
+  // On Windows this is the primary transfer path because Chromium does not
+  // reliably carry script-added File objects across a native drag operation.
+  void ensureActivePageDropBridge();
 
   // Directory drags can become saved FrameChute galleries, so remember their
   // source mapping beyond the current browser session. The actual filesystem
@@ -291,7 +348,11 @@ async function readDraggedFile(message) {
     throw new Error("This receiver currently requests the original file. Change thumbnail dragging to Original and try again.");
   }
 
-  const file = await fileForRelativePath(relativePath);
+  // Prefer the exact File captured by the side panel at dragstart. This avoids
+  // reopening the Windows filesystem handle from the service-worker process.
+  let file = await cachedTransferFile(token);
+  if (!file) file = await fileForRelativePath(relativePath);
+
   if (file.size > MAX_INLINE_TRANSFER_BYTES) {
     throw new Error("This file is too large for the current direct handoff. Large-file streaming is still being added.");
   }
