@@ -2,34 +2,47 @@
 
 This is the diagnostic map for the current compact-ticket architecture. It is not a proposal for a different drag transport.
 
+## Recorder health
+
+1. Every sender or website context records `blackbox-context-loaded`; website contexts additionally record `receiver-context-loaded`.
+2. The context persists `blackbox-storage-ping-sent` through the normal service-worker logging path and requires a stored sequence acknowledgement.
+3. It then persists `blackbox-storage-ping-ack`. A missing acknowledgement records a bounded local text fallback, marks health degraded, and emits a console warning.
+4. The worker independently records `worker-context-loaded`. Exported health is based on observed records, never manifest declarations.
+
 ## Sender
 
-1. `pointerdown` creates a session-local attempt ID and records the previous attempt outcome.
+1. `pointerdown` creates an immutable session-local attempt ID/number and records the previous outcome. Its watchdog closes over that exact ID and cannot be satisfied or blamed by a later attempt.
 2. A physical `dragstart` enters `sidepanel.js:startDrag`.
-3. `interop.js` records payload construction and starts caching the exact `File` without reading its contents.
-4. On Windows, native `DataTransfer.items.add(File)` is explicitly recorded as skipped by policy. On other platforms its attempted and observed result are separate facts.
-5. FileChute writes the private payload and compact `FILECHUTE1|...` ticket, then snapshots what Chromium exposes through `DataTransfer`.
-6. Transfer registration is sent to the service worker and its asynchronous response is recorded.
-7. Blur, focus, visibility, pointer release, physical `dragend`, and final `dropEffect` close the observable sender path. A watchdog identifies `pointerdown` without `dragstart`.
+3. `interop.js` records payload construction and exact-file cache outcome without logging file contents.
+4. On Windows, native `DataTransfer.items.add(File)` remains skipped by policy.
+5. FileChute writes private metadata and the compact `FILECHUTE1|...` text ticket, then snapshots Chromium's `DataTransfer` view.
+6. Registration request/result, focus/visibility, pointer release, physical `dragend`, and final `dropEffect` complete the observable sender path.
 
 ## Service worker
 
-1. Registration receipt, validation, and session-storage completion are distinct checkpoints.
-2. A byte request records transfer lookup before consuming the one-shot registration.
-3. Exact cached-file lookup records its wait duration and hit/miss result.
-4. A miss records filesystem fallback start and result, including permission/path exceptions.
-5. A successful response records metadata and byte length, never file contents.
+Registration, lookup, exact cached-file access, filesystem fallback, and byte response remain distinct checkpoints correlated by `transferToken`. File contents are never logged.
 
-## Website receiver
+## Website receiver: one owner
 
-1. The browser's physical `dragenter`, throttled `dragover`, and `drop` are captured with target and `DataTransfer` snapshots.
-2. Receiver dragover policy records whether FileChute called `preventDefault()` and set `dropEffect`.
-3. Ticket detection, usable native-file detection, physical-drop claim, and propagation policy are distinct checkpoints.
-4. Each byte request retry and response is recorded.
-5. Reconstructed file metadata, input candidates, assignment attempt, resulting `input.files.length`, and dispatched input/change events are recorded.
-6. Every synthetic drag/drop dispatch is explicitly marked `eventOrigin: synthetic`; capture-level records also derive origin from `Event.isTrusted`.
-7. Receiver completion or exception closes the receiver path.
+`page-drop-bridge.js` is the only injected owner of physical FileChute website drops. It directly parses private MIME, compact `FILECHUTE1|...`, and the legacy envelope. `page-drop-text-envelope.js` is not statically injected, dynamically injected, or web-accessible, so no handler consumes a physical ticket merely to redispatch a synthetic ticket.
 
-## Remaining external boundaries
+Every startup and claim records the canonical handler identity and receiver strategy. Physical and synthetic events remain explicitly distinguished.
 
-The trace cannot observe Chromium internals between sender blur and destination `dragenter`, between accepted destination `dragover` and a missing physical `drop`, or between pointer movement and a missing browser-generated `dragstart`. These gaps are intentionally reported as Chromium-owned boundaries rather than inferred successes. Destination applications may also ignore correctly dispatched `input`/`change` or synthetic drag events after FileChute's last observable checkpoint; the trace records the dispatch result but does not call that destination UI state successful.
+## Strategy gate
+
+On Windows, `direct-input-only` is the diagnostics default:
+
+1. Claim the physical compact-ticket drop.
+2. Request bytes by `transferToken` and reconstruct the real `File`.
+3. Find compatible file inputs and use a fresh `DataTransfer` only to assign `input.files`.
+4. Dispatch `input` and `change`, and verify the resulting file count.
+5. If no direct assignment succeeds, record terminal `receiver-no-compatible-direct-target`.
+6. Do not synthesize `dragenter`, `dragover`, `drop`, or cleanup `dragleave`.
+
+`legacy-synthetic-fallback` is retained only as an explicit diagnostics A/B setting. It logs synthetic event construction and dispatch separately before using the historical fallback.
+
+## Deterministic first divergence
+
+Export preserves the raw bounded event store and adds analysis. Analysis orders by persistent sequence, groups by attempt ID and transfer token, joins cross-context records using `transferToken`, counts physical/synthetic events, derives known poisoning signatures, and compares each attempt with the most complete preceding attempt. It reports the first differing/missing checkpoint, the preceding confirmed checkpoint, and the owning handler. Gaps between accepted physical `dragover` and a missing physical `drop`, or between pointerdown and a missing browser-generated `dragstart`, are reported as `unknown / Chromium-owned boundary`.
+
+A dispatched DOM event is not destination success. Only observed assignment state is reported as FileChute success, and real Windows repeated-drag evidence is required before claiming the underlying bug fixed.

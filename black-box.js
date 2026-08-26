@@ -35,6 +35,9 @@
   let attemptStartedAt = null;
   let dragstartObserved = false;
   let dragendObserved = false;
+  let activeAttemptLifecycle = null;
+  const fallbackKey = "filechute-blackbox-delivery-fallback-v1";
+  let recorderDegraded = false;
 
   function targetDescriptor(target) {
     if (!(target instanceof Element)) return null;
@@ -118,30 +121,60 @@
     return snapshot;
   }
 
-  function log(checkpoint, details = {}) {
-    if (!globalThis.chrome?.runtime?.sendMessage) return;
-    const event = {
-      at: new Date().toISOString(),
-      performanceNow: Number(performance.now().toFixed(3)),
-      sessionId,
+  function retainFallback(event, error) {
+    recorderDegraded = true;
+    console.warn("FileChute black-box delivery failed", error?.message || error, event.checkpoint);
+    try {
+      const records = JSON.parse(localStorage.getItem(fallbackKey) || "[]");
+      records.push({ ...event, deliveryError: String(error?.message || error || "unknown") });
+      localStorage.setItem(fallbackKey, JSON.stringify(records.slice(-40)));
+    } catch {}
+    updateHealthText();
+  }
+
+  async function deliver(event) {
+    if (!globalThis.chrome?.runtime?.sendMessage) {
+      retainFallback(event, new Error("chrome.runtime.sendMessage unavailable"));
+      return null;
+    }
+    try {
+      const response = await chrome.runtime.sendMessage({ type: LOG_MESSAGE, event });
+      if (!response?.ok || !response.sequence) throw new Error(response?.error || "persistence acknowledgement missing sequence");
+      return response;
+    } catch (error) {
+      retainFallback(event, error);
+      return null;
+    }
+  }
+
+  function buildEvent(checkpoint, details = {}) {
+    return {
+      at: new Date().toISOString(), performanceNow: Number(performance.now().toFixed(3)), sessionId,
       attemptId: details.attemptId || activeAttemptId,
       attemptNumber: details.attemptNumber || (activeAttemptId ? attemptNumber : null),
-      source,
-      component: source,
-      checkpoint,
-      transferToken: details.transferToken || lastKnownToken || null,
-      itemName: details.itemName || lastKnownName || null,
-      visible: document.visibilityState,
-      hasFocus: document.hasFocus(),
-      userAgent: navigator.userAgent,
+      source, component: source, checkpoint, transferToken: details.transferToken || lastKnownToken || null,
+      itemName: details.itemName || lastKnownName || null, visible: document.visibilityState,
+      hasFocus: document.hasFocus(), userAgent: navigator.userAgent,
       platform: navigator.userAgentData?.platform || navigator.platform || null,
-      extensionId: chrome.runtime.id,
-      manifestVersion: chrome.runtime.getManifest().version,
-      ...details
+      extensionId: chrome.runtime.id, manifestVersion: chrome.runtime.getManifest().version, ...details
     };
-    try {
-      chrome.runtime.sendMessage({ type: LOG_MESSAGE, event }).catch(() => {});
-    } catch {}
+  }
+
+  function log(checkpoint, details = {}) {
+    void deliver(buildEvent(checkpoint, details));
+  }
+
+  async function checkRecorder() {
+    const requestId = crypto.randomUUID();
+    const sent = buildEvent("blackbox-storage-ping-sent", { result: "pending", requestId });
+    const response = await deliver(sent);
+    if (!response) {
+      retainFallback(buildEvent("blackbox-storage-ping-failed", { result: "failed", requestId }), new Error("ping was not persisted"));
+      return null;
+    }
+    const ack = await deliver(buildEvent("blackbox-storage-ping-ack", { result: "ok", requestId, persistedSequence: response.sequence }));
+    updateHealthText();
+    return ack;
   }
 
   function logEvent(name, event, { allowRead = true } = {}) {
@@ -179,6 +212,7 @@
       attemptStartedAt = performance.now();
       dragstartObserved = false;
       dragendObserved = false;
+      activeAttemptLifecycle = { attemptId: activeAttemptId, attemptNumber, dragstartObserved: false, dragendObserved: false };
     }
     logEvent("pointerdown", event, { allowRead: false });
     if (source === "filechute-sidepanel") log("attempt-started", {
@@ -189,17 +223,23 @@
         dropEffect: previousAttempt.dropEffect
       } : null
     });
-    if (source === "filechute-sidepanel") setTimeout(() => {
-      if (!dragstartObserved && activeAttemptId) log("dragstart-watchdog", {
-        result: "timeout",
-        failureSignature: "W-DRAG-002:pointerdown-without-dragstart",
-        timeoutMs: 1500
-      });
-    }, 1500);
+    if (source === "filechute-sidepanel") {
+      const watchedAttempt = activeAttemptLifecycle;
+      setTimeout(() => {
+        if (!watchedAttempt.dragstartObserved) log("dragstart-watchdog", {
+          attemptId: watchedAttempt.attemptId,
+          attemptNumber: watchedAttempt.attemptNumber,
+          result: "timeout",
+          failureSignature: "W-DRAG-002:pointerdown-without-dragstart",
+          timeoutMs: 1500
+        });
+      }, 1500);
+    }
   }, true);
 
   document.addEventListener("dragstart", (event) => {
     dragstartObserved = true;
+    if (activeAttemptLifecycle) activeAttemptLifecycle.dragstartObserved = true;
     logEvent("dragstart", event);
   }, true);
   document.addEventListener("pointerup", (event) => logEvent("pointerup", event, { allowRead: false }), true);
@@ -215,6 +255,7 @@
     logEvent("dragend", event);
     if (source === "filechute-sidepanel") {
       dragendObserved = true;
+      if (activeAttemptLifecycle) activeAttemptLifecycle.dragendObserved = true;
       const dropEffect = event.dataTransfer?.dropEffect || "none";
       log("attempt-ended", {
         result: dropEffect === "none" ? "failed" : "ok",
@@ -282,12 +323,34 @@
     log("blackbox-cleared");
   }
 
+  function updateHealthText(text) {
+    const node = document.getElementById("filechute-blackbox-health");
+    if (node) node.textContent = text || `Recorder: ${source} ${recorderDegraded ? "DEGRADED" : "checking…"}`;
+  }
+
+  async function showHealth() {
+    const response = await chrome.runtime.sendMessage({ type: DUMP_MESSAGE }).catch(() => null);
+    const statuses = response?.analysis?.recorderHealth || [];
+    const label = (name) => statuses.find((item) => item.context === name)?.status || "unknown";
+    updateHealthText(`Recorder: sender ${label("filechute-sidepanel").toUpperCase()} | worker ${label("filechute-service-worker").toUpperCase()} | ChatGPT ${label("chatgpt")} | Google ${label("google")} | Yandex ${label("yandex")}`);
+  }
+
+  async function showAnalysis() {
+    const response = await chrome.runtime.sendMessage({ type: DUMP_MESSAGE }).catch(() => null);
+    const analysis = response?.analysis;
+    if (!analysis) return alert("Recorder analysis unavailable.");
+    const recent = analysis.attempts.slice(-5).map((attempt) => `Attempt ${attempt.attemptNumber || attempt.attemptId}: ${attempt.lastConfirmedGoodCheckpoint || "none"} -> ${attempt.firstFailedOrMissingCheckpoint || "complete"} (${attempt.owningComponent})`).join("\n");
+    const divergence = analysis.firstDivergentAttempt ? `First divergence: ${analysis.firstDivergentAttempt.attemptId} at ${analysis.firstDivergentAttempt.firstDivergentCheckpoint}` : "First divergence: not established";
+    alert(`${divergence}\n${recent || "No attempts recorded."}`);
+  }
+
   globalThis.FileChuteBlackBox = {
     log,
     transferSnapshot,
     currentAttempt: () => ({ attemptId: activeAttemptId, attemptNumber }),
     export: exportLog,
-    clear: clearLog
+    clear: clearLog,
+    checkRecorder
   };
 
   if (source === "filechute-sidepanel") {
@@ -297,24 +360,54 @@
       wrap.id = "filechute-blackbox-controls";
       Object.assign(wrap.style, {
         position: "fixed", right: "8px", bottom: "8px", zIndex: "2147483647",
-        display: "flex", gap: "5px", opacity: ".88"
+        display: "flex", gap: "5px", opacity: ".88", alignItems: "center", flexWrap: "wrap", maxWidth: "680px"
+      });
+      const health = document.createElement("span");
+      health.id = "filechute-blackbox-health";
+      health.textContent = "Recorder: checking…";
+      const strategy = document.createElement("select");
+      strategy.title = "Diagnostics receiver strategy (reload destination tabs after changing)";
+      for (const [value, label] of [["direct-input-only", "Direct input only"], ["legacy-synthetic-fallback", "Legacy synthetic fallback"]]) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        strategy.append(option);
+      }
+      const defaultStrategy = /Windows/i.test(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent) ? "direct-input-only" : "legacy-synthetic-fallback";
+      strategy.value = defaultStrategy;
+      chrome.storage.local.get("filechuteDiagnosticsReceiverStrategy").then((stored) => {
+        strategy.value = stored?.filechuteDiagnosticsReceiverStrategy || defaultStrategy;
+      }).catch(() => {});
+      strategy.addEventListener("change", () => {
+        void chrome.storage.local.set({ filechuteDiagnosticsReceiverStrategy: strategy.value });
+        log("receiver-strategy-setting-changed", { result: "ok", receiverStrategy: strategy.value });
       });
       const exportButton = document.createElement("button");
       exportButton.type = "button";
       exportButton.textContent = "Export bug log";
       exportButton.title = "Download the local FileChute black-box trace for Codex";
       exportButton.addEventListener("click", () => void exportLog());
+      const checkButton = document.createElement("button");
+      checkButton.type = "button";
+      checkButton.textContent = "Check recorder";
+      checkButton.addEventListener("click", () => void checkRecorder().then(showHealth));
+      const analyzeButton = document.createElement("button");
+      analyzeButton.type = "button";
+      analyzeButton.textContent = "Analyze last attempts";
+      analyzeButton.addEventListener("click", () => void showAnalysis());
       const clearButton = document.createElement("button");
       clearButton.type = "button";
       clearButton.textContent = "Clear";
       clearButton.title = "Clear local black-box history";
       clearButton.addEventListener("click", () => void clearLog());
-      wrap.append(exportButton, clearButton);
+      wrap.append(health, strategy, checkButton, analyzeButton, exportButton, clearButton);
       document.body.append(wrap);
     };
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount, { once: true });
     else mount();
   }
 
-  log("blackbox-loaded", { hrefOrigin: location.origin, pathname: location.pathname });
+  log("blackbox-context-loaded", { result: "ok", hrefOrigin: location.origin, pathname: location.pathname });
+  if (source !== "filechute-sidepanel") log("receiver-context-loaded", { result: "ok", hrefOrigin: location.origin, pathname: location.pathname });
+  void checkRecorder().then(() => { if (source === "filechute-sidepanel") void showHealth(); });
 })();

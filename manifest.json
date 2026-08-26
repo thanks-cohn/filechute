@@ -10,7 +10,12 @@
     "48": "assets/icon48.png",
     "128": "assets/icon128.png"
   },
-  "permissions": ["storage", "activeTab", "scripting", "sidePanel"],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "sidePanel"
+  ],
   "optional_host_permissions": [
     "http://127.0.0.1:17891/*",
     "http://*/*",
@@ -33,20 +38,39 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
-      "js": ["black-box.js", "chatgpt-image-drag-source.js"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "black-box.js",
+        "chatgpt-image-drag-source.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     },
     {
-      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
-      "js": ["page-drop-bridge.js", "page-drop-text-envelope.js", "page-resource-export.js"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "page-drop-bridge.js",
+        "page-resource-export.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     },
     {
-      "matches": ["https://*.google.com/*"],
-      "js": ["black-box.js", "google-image-drag-source.js", "page-drop-bridge.js", "page-drop-text-envelope.js", "page-resource-export.js"],
+      "matches": [
+        "https://*.google.com/*"
+      ],
+      "js": [
+        "black-box.js",
+        "google-image-drag-source.js",
+        "page-drop-bridge.js",
+        "page-resource-export.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     },
@@ -59,7 +83,12 @@
         "https://*.yandex.uz/*",
         "https://*.yandex.com.tr/*"
       ],
-      "js": ["black-box.js", "yandex-image-drag-source.js", "page-drop-bridge.js", "page-drop-text-envelope.js", "page-resource-export.js"],
+      "js": [
+        "black-box.js",
+        "yandex-image-drag-source.js",
+        "page-drop-bridge.js",
+        "page-resource-export.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     }
@@ -83,7 +112,6 @@
         "google-image-drop-fallback.js",
         "yandex-image-drop-fallback.js",
         "black-box.js",
-        "page-drop-text-envelope.js",
         "directory-drag.js",
         "settings-draft.js",
         "durable-storage-settings.js",
@@ -100,7 +128,9 @@
         "metadata-store.js",
         "thumbnail-store.js"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

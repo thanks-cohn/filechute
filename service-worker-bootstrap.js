@@ -1,3 +1,4 @@
+import "./black-box-analyzer.js";
 import "./black-box-service.js";
 import "./service-worker.js";
 
@@ -28,7 +29,7 @@ async function injectOpenSupportedTabs({ force = false } = {}) {
     .filter((tab) => Number.isInteger(tab?.id))
     .map((tab) => chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ["black-box.js", "page-drop-bridge.js", "page-drop-text-envelope.js"]
+      files: ["black-box.js", "page-drop-bridge.js"]
     })));
 }
 

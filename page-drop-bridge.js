@@ -5,6 +5,13 @@
   const LEGACY_PREFIX = "filechute-transfer-v1:";
   const GENERATION = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   globalThis[MARKER] = GENERATION;
+  const IS_WINDOWS = /Windows/i.test(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent);
+  let receiverStrategy = IS_WINDOWS ? "direct-input-only" : "legacy-synthetic-fallback";
+  chrome.storage.local.get("filechuteDiagnosticsReceiverStrategy").then((stored) => {
+    const configured = stored?.filechuteDiagnosticsReceiverStrategy;
+    if (["direct-input-only", "legacy-synthetic-fallback"].includes(configured)) receiverStrategy = configured;
+    diagnostic("receiver-strategy-selected", null, { result: "ok", receiverStrategy, isWindows: IS_WINDOWS });
+  }).catch((error) => diagnostic("receiver-strategy-selected", null, { result: "failed", receiverStrategy, isWindows: IS_WINDOWS, exception: { name: error?.name, message: error?.message } }));
 
   function diagnostic(checkpoint, payload = null, details = {}) {
     globalThis.FileChuteBlackBox?.log?.(checkpoint, {
@@ -12,11 +19,13 @@
       itemName: payload?.originalName || payload?.name || null,
       relativePath: payload?.relativePath || null,
       handler: "page-drop-bridge.js",
+      receiverStrategy,
       ...details
     });
   }
 
-  diagnostic("receiver-initialized", null, { result: "ok", receiverGeneration: GENERATION, pathname: location.pathname });
+  diagnostic("receiver-initialized", null, { result: "ok", receiverGeneration: GENERATION, pathname: location.pathname, receiverOwner: "page-drop-bridge.js:canonical-single-owner" });
+  diagnostic("receiver-owner-selected", null, { result: "ok", receiverOwner: "page-drop-bridge.js", compactTicketOwnerCount: 1 });
 
   function extensionContextAvailable() {
     try {
@@ -250,8 +259,11 @@
     if (!(target instanceof EventTarget)) return false;
     try {
       for (const type of ["dragenter", "dragover", "drop"]) {
+        diagnostic("receiver-synthetic-construction-attempt", payload, { result: "pending", eventOrigin: "synthetic", syntheticEventType: type });
+        const syntheticEvent = new DragEvent(type, dragInit(file, originalEvent));
+        diagnostic("receiver-synthetic-construction-result", payload, { result: "ok", eventOrigin: "synthetic", syntheticEventType: type });
         diagnostic("receiver-synthetic-dispatch-attempt", payload, { result: "pending", eventOrigin: "synthetic", syntheticEventType: type });
-        const accepted = target.dispatchEvent(new DragEvent(type, dragInit(file, originalEvent)));
+        const accepted = target.dispatchEvent(syntheticEvent);
         diagnostic("receiver-synthetic-dispatch-result", payload, { result: "ok", eventOrigin: "synthetic", syntheticEventType: type, dispatchReturned: accepted });
       }
       return true;
@@ -331,9 +343,14 @@
     diagnostic("receiver-input-candidates", payload, { result: input ? "ok" : "ignored", candidateCount: inputs.length, selected: input ? { accept: input.accept || "", disabled: input.disabled } : null });
 
     if (input && assignFile(input, file, payload)) {
-      clearPageDropState(event.target, event);
+      if (receiverStrategy === "legacy-synthetic-fallback") clearPageDropState(event.target, event);
       showToast(`Sent ${file.name} to this page.`);
       return;
+    }
+
+    if (receiverStrategy === "direct-input-only") {
+      diagnostic("receiver-no-compatible-direct-target", payload, { result: "failed", candidateCount: inputs.length, syntheticEventsSuppressed: ["dragenter", "dragover", "drop", "dragleave"] });
+      throw new Error("This page does not expose a compatible direct file input. Synthetic drag fallback is disabled for this Windows diagnostic run.");
     }
 
     if (dispatchDrop(event.target, file, event, payload)) {
@@ -375,7 +392,7 @@
 
     void receive(payload, event).then(() => diagnostic("receiver-handoff-completed", payload, { result: "ok" })).catch((error) => {
       diagnostic("receiver-handoff-completed", payload, { result: "failed", exception: { name: error?.name, message: error?.message, stack: error?.stack } });
-      clearPageDropState(event.target, event);
+      if (receiverStrategy === "legacy-synthetic-fallback") clearPageDropState(event.target, event);
       console.error("FileChute website handoff failed", error);
       showToast(error?.message || "Could not send that FileChute file to this page.", true);
     });
