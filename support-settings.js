@@ -7,6 +7,8 @@ const cancelButton = document.querySelector("#settings-cancel");
 const cancelX = document.querySelector("#settings-cancel-x");
 const status = document.querySelector("#status");
 
+let resubmittingAfterSave = false;
+
 function setStatus(message, error = false) {
   if (!status) return;
   status.textContent = message;
@@ -40,7 +42,16 @@ cancelButton?.addEventListener("click", () => void loadSupportUrl(), true);
 cancelX?.addEventListener("click", () => void loadSupportUrl(), true);
 
 form?.addEventListener("submit", (event) => {
-  if (!(input instanceof HTMLInputElement)) return;
+  if (!(input instanceof HTMLInputElement) || !(form instanceof HTMLFormElement)) return;
+
+  // The second submit is intentionally allowed through to settings-draft.js.
+  // This guarantees chrome.storage.local finishes before that module reloads
+  // the panel to apply the rest of Chute's settings.
+  if (resubmittingAfterSave) {
+    resubmittingAfterSave = false;
+    return;
+  }
+
   const normalized = normalizedSupportUrl(input.value);
   if (normalized === null) {
     event.preventDefault();
@@ -51,11 +62,19 @@ form?.addEventListener("submit", (event) => {
     return;
   }
 
+  event.preventDefault();
+  event.stopImmediatePropagation();
   input.setCustomValidity("");
-  void chrome.storage.local.set({ [SUPPORT_URL_KEY]: normalized }).catch((error) => {
-    console.error("Chute could not save the Chutty support URL", error);
-    setStatus("Could not save the Chutty support URL.", true);
-  });
+
+  void chrome.storage.local.set({ [SUPPORT_URL_KEY]: normalized })
+    .then(() => {
+      resubmittingAfterSave = true;
+      form.requestSubmit();
+    })
+    .catch((error) => {
+      console.error("Chute could not save the Chutty support URL", error);
+      setStatus("Could not save the Chutty support URL.", true);
+    });
 }, true);
 
 void loadSupportUrl();
