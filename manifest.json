@@ -95,6 +95,7 @@
         "first-run.js",
         "storage.js",
         "interop.js",
+        "drag-diagnostics.js",
         "metadata-store.js",
         "thumbnail-store.js"
       ],
