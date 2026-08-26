@@ -30,15 +30,26 @@ function prepareDirectoryRows(root = document) {
 
     const grip = row.querySelector(".filechute-grip");
     if (grip) {
+      grip.draggable = true;
       grip.title = "Drag this folder to FrameChute as a gallery";
       grip.setAttribute("aria-label", grip.title);
     }
 
+    // sidepanel.js intentionally makes these non-draggable for ordinary folder
+    // navigation. On Windows that leaves only a tiny grip/parent-row hit area
+    // and Chromium often begins a text-selection drag instead of the folder
+    // payload. Make the visible folder surfaces explicit drag sources too.
     const preview = row.querySelector(".preview-wrap");
-    if (preview) preview.title = "Drag this folder to FrameChute as a gallery";
+    if (preview) {
+      preview.draggable = true;
+      preview.title = "Drag this folder to FrameChute as a gallery";
+    }
 
     const name = row.querySelector(".entry-name");
-    if (name) name.title = "Click to open · drag to FrameChute as a gallery";
+    if (name) {
+      name.draggable = true;
+      name.title = "Click to open · drag to FrameChute as a gallery";
+    }
   }
 }
 
@@ -48,10 +59,9 @@ function ensureDirectoryDrag(event) {
   const row = target?.closest(".entry.directory");
   if (!row) return;
 
-  // sidepanel.js already writes the canonical FileChute payload when the
-  // filename/preview starts the drag. This is a fallback for dragging the
-  // folder row itself or for future UI changes: never replace a payload that
-  // is already present.
+  // sidepanel.js already writes the canonical FileChute payload when the grip
+  // starts the drag. This fallback covers the folder name, preview, and row
+  // itself. Never replace a payload that is already present.
   if (hasFileChutePayload(event.dataTransfer)) return;
 
   const name = rowName(row);
