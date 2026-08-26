@@ -26,12 +26,18 @@ let settingsSnapshot = null;
 let resizeTarget = null;
 let lastEdited = "width";
 let permissionSyncBusy = false;
+let liveRootHandle = null;
 
 function setStatus(message, error = false) {
   if (!statusElement) return;
   statusElement.textContent = message;
   statusElement.classList.toggle("error", error);
 }
+
+window.addEventListener("filechute:root-handle-ready", (event) => {
+  liveRootHandle = event?.detail?.handle || null;
+  void syncSaveButtons();
+});
 
 function ext(name) {
   const value = String(name || "").toLowerCase();
@@ -52,8 +58,7 @@ function normalizeHex(value) {
   return null;
 }
 
-async function getRoot({ request = false } = {}) {
-  const root = await readStored(ROOT_HANDLE_KEY);
+async function permissionFor(root, { request = false } = {}) {
   if (!root || root.kind !== "directory") return null;
   try {
     if ((await root.queryPermission({ mode: "readwrite" })) === "granted") return root;
@@ -64,6 +69,20 @@ async function getRoot({ request = false } = {}) {
   } catch {
     return null;
   }
+}
+
+async function getRoot({ request = false } = {}) {
+  // Prefer the exact live handle that folder-picker/first-run handed to the
+  // running shelf. Re-reading the structured-cloned IndexedDB handle on
+  // Windows can produce a separately permission-gated object even while the
+  // current shelf is already authorized.
+  const live = await permissionFor(liveRootHandle, { request });
+  if (live) return live;
+
+  const stored = await readStored(ROOT_HANDLE_KEY);
+  const resolved = await permissionFor(stored, { request });
+  if (resolved) liveRootHandle = resolved;
+  return resolved;
 }
 
 function saveLikeControl(element) {
@@ -471,7 +490,11 @@ async function openResize(row) {
     ui.width?.select();
   } catch (error) {
     console.error("FileChute resize could not open", error);
-    setStatus(error?.message || "Could not open image resize.", true);
+    if (error?.name === "NotFoundError") {
+      setStatus("Windows could not reopen this image from the remembered path. Refresh the shelf once and try Resize again.", true);
+    } else {
+      setStatus(error?.message || "Could not open image resize.", true);
+    }
   }
 }
 
@@ -523,7 +546,10 @@ async function createCopy() {
   }
 
   try {
-    const current = await resolveRow(resizeTarget.row, { request: true });
+    // Keep using the exact file/directory handles that successfully opened the
+    // dialog. Re-resolving through IndexedDB/path text here was another place
+    // Windows could turn a working resize into a NotFoundError mid-operation.
+    const current = resizeTarget;
     const file = await current.fileHandle.getFile();
     const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
     try {
@@ -591,9 +617,20 @@ async function openResizedFolder(row) {
     }
 
     const targetParts = [...currentParts, RESIZED_FOLDER];
-    sessionStorage.setItem(RESTORE_PATH_KEY, JSON.stringify(targetParts));
-    setStatus(`Opening ${[resolved.root.name, ...targetParts].join("/")}…`);
-    location.reload();
+    const targetLocation = [resolved.root.name, ...targetParts].join("/");
+    const locationInput = document.querySelector(".filechute-location");
+    const goButton = document.querySelector(".filechute-location-go");
+
+    // ui-enhancements.js already owns live in-panel navigation. Use it rather
+    // than destroying this side-panel document and its Windows permission.
+    if (locationInput instanceof HTMLInputElement && goButton instanceof HTMLElement) {
+      locationInput.value = targetLocation;
+      goButton.click();
+      return;
+    }
+
+    window.dispatchEvent(new CustomEvent("filechute:filesystem-changed"));
+    setStatus(`resized/ is ready at ${targetLocation}.`);
   } catch (error) {
     setStatus(error?.message || "Could not open resized/.", true);
   }
