@@ -1,3 +1,4 @@
+import "./black-box.js";
 import "./browser-drag-normalizer.js";
 import { readStored } from "./storage.js";
 
@@ -58,9 +59,6 @@ function hasConcreteFileItems(transfer) {
     } catch {}
   }
 
-  // Browser image-search drags often advertise a zero-byte pseudo-file. Those
-  // are claimed first by browser-drag-normalizer.js and its Google/Yandex/
-  // ChatGPT source-specific fallbacks before this local-file receiver runs.
   return false;
 }
 
@@ -209,9 +207,6 @@ document.addEventListener("drop", (event) => {
   const transfer = event.dataTransfer;
   if (!transfer || customProtocol(transfer) || !hasConcreteFileItems(transfer) || dropBusy) return;
 
-  // Source-specific browser image handlers are registered before this listener
-  // by browser-drag-normalizer.js. If one of those recognizes the drag it owns
-  // the event. This path is only the ordinary local/native file receiver.
   event.preventDefault();
   event.stopImmediatePropagation();
   const targetPathNames = targetPathForEvent(event);
