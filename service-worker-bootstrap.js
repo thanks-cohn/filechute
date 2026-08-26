@@ -1,4 +1,5 @@
 import "./service-worker.js";
+import "./chutty-service.js";
 
 const DROP_BRIDGE_SESSION_KEY = "filechute-drop-bridge-bootstrap-v1";
 const DROP_BRIDGE_MATCHES = [
