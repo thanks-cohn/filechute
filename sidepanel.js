@@ -931,6 +931,19 @@ thumbnailLocationButton?.addEventListener("click", async () => {
   }
 });
 
+window.addEventListener("filechute:root-handle-ready", (event) => {
+  void (async () => {
+    rootHandle = event?.detail?.handle || null;
+    pathHandles = [];
+    pathNames = [];
+    resetPage();
+    if (searchInput) searchInput.value = "";
+    directorySnapshot = [];
+    directorySignature = "";
+    await renderDirectory();
+  })();
+});
+
 window.addEventListener("filechute:filesystem-changed", () => {
   void scanForFilesystemChanges();
 });
