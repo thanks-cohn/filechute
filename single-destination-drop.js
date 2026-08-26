@@ -3,8 +3,8 @@ import { readStored } from "./storage.js";
 
 const ROOT_HANDLE_KEY = "filechute-root-handle";
 const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
-const CHUTE_DRAG_TYPE = "application/x-filechute-item";
-const FRAMECHUTE_DRAG_TYPE = "application/x-framefilechute-item+json";
+const CHUTE_DRAG_TYPE = "application/x-chute-item";
+const FRAMECHUTE_DRAG_TYPE = "application/x-framechute-item+json";
 
 const statusElement = document.querySelector("#status");
 const breadcrumbs = document.querySelector("#breadcrumbs");
