@@ -8,7 +8,6 @@ const LAUNCH_MODE_KEY = "filechute-launch-mode";
 const TRANSFER_PREFIX = "filechute-transfer-v1:";
 const GALLERY_SOURCE_PREFIX = "filechute-gallery-source-v1:";
 const MAX_INLINE_TRANSFER_BYTES = 48 * 1024 * 1024;
-const MAX_CHUTTY_CAPTURE_BYTES = 32 * 1024 * 1024;
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "ico", "apng"]);
 
 async function fileChuteLaunchMode() {
@@ -80,7 +79,7 @@ async function focusStandalone(windowInfo, bounds = null) {
   }
 }
 
-async function openStandaloneChute(tab) {
+async function openStandaloneFileChute(tab) {
   const bounds = await standaloneBounds(tab);
   const existing = await rememberedStandaloneWindow();
   if (await focusStandalone(existing, bounds)) return;
@@ -169,99 +168,6 @@ async function rootDirectory() {
     throw new Error(`Reconnect ${root.name || "the Chute folder"} in Chute, then try again.`);
   }
   return root;
-}
-
-async function writableRootDirectory() {
-  const root = await readStored(ROOT_HANDLE_KEY);
-  if (!root || root.kind !== "directory") throw new Error("Choose a Chute folder first.");
-  let permission = "denied";
-  try { permission = await root.queryPermission({ mode: "readwrite" }); } catch {}
-  if (permission !== "granted") {
-    throw new Error(`Reconnect ${root.name || "the Chute folder"} from the Chute panel, then try again.`);
-  }
-  return root;
-}
-
-function safeFileName(value, fallback = "browser-image") {
-  const name = String(value || "").replace(/[\\/:*?"<>|\r\n\0]+/g, "_").replace(/^\.+/, "").trim();
-  return name.slice(0, 180) || fallback;
-}
-
-async function uniqueRootName(root, requested) {
-  const name = safeFileName(requested);
-  const dot = name.lastIndexOf(".");
-  const stem = dot > 0 ? name.slice(0, dot) : name;
-  const extension = dot > 0 ? name.slice(dot) : "";
-  for (let attempt = 0; attempt < 1000; attempt += 1) {
-    const candidate = attempt ? `${stem} (${attempt + 1})${extension}` : name;
-    try { await root.getFileHandle(candidate); }
-    catch (error) { if (error?.name === "NotFoundError") return candidate; if (error?.name !== "TypeMismatchError") throw error; }
-  }
-  return `${stem}-${Date.now()}${extension}`;
-}
-
-function base64Bytes(value) {
-  const binary = atob(String(value || ""));
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return bytes;
-}
-
-function responseFileName(url, response, mime) {
-  let name = "browser-image";
-  try { name = decodeURIComponent(url.pathname.split("/").filter(Boolean).at(-1) || name); } catch {}
-  name = safeFileName(name);
-  if (!/\.[a-z0-9]{2,8}$/i.test(name)) {
-    const extension = { "image/jpeg":"jpg", "image/png":"png", "image/gif":"gif", "image/webp":"webp", "image/avif":"avif" }[mime] || "img";
-    name += `.${extension}`;
-  }
-  return name;
-}
-
-async function materializeChuttyItem(item) {
-  if (item?.base64) {
-    const bytes = base64Bytes(item.base64);
-    if (bytes.byteLength > MAX_CHUTTY_CAPTURE_BYTES) throw new Error("A dropped file is too large for the browser-image bridge.");
-    return { bytes, name:safeFileName(item.name, "browser-file"), type:String(item.type || "application/octet-stream"), sourceUrl:null, parentPageUrl:null };
-  }
-  const url = new URL(String(item?.sourceUrl || ""));
-  if (!['http:', 'https:'].includes(url.protocol)) throw new Error("The source image is unavailable to Chute.");
-  const response = await fetch(url.href, { cache:"no-store", credentials:"omit", referrerPolicy:"no-referrer" });
-  if (!response.ok) throw new Error(`The source image returned HTTP ${response.status}.`);
-  const blob = await response.blob();
-  if (!String(blob.type).toLowerCase().startsWith("image/")) throw new Error("The dragged source did not return image bytes.");
-  if (blob.size > MAX_CHUTTY_CAPTURE_BYTES) throw new Error("The source image is too large for the browser-image bridge.");
-  return { bytes:new Uint8Array(await blob.arrayBuffer()), name:responseFileName(url, response, blob.type), type:blob.type, sourceUrl:url.href, parentPageUrl:String(item.parentPageUrl || "") || null };
-}
-
-async function ingestWithChutty(message) {
-  const root = await writableRootDirectory();
-  const items = Array.isArray(message?.items) ? message.items.slice(0, 20) : [];
-  if (!items.length) throw new Error("The drop contained no readable files.");
-  let written = 0;
-  for (const item of items) {
-    const payload = await materializeChuttyItem(item);
-    const name = await uniqueRootName(root, payload.name);
-    const handle = await root.getFileHandle(name, { create:true });
-    const writable = await handle.createWritable();
-    try { await writable.write(new Blob([payload.bytes], { type:payload.type })); await writable.close(); }
-    catch (error) { await writable.abort().catch(() => {}); throw error; }
-    written += 1;
-    if (payload.sourceUrl) {
-      await chrome.storage.local.set({ [`chute-provenance:${name}`]: { sourceUrl:payload.sourceUrl, parentPageUrl:payload.parentPageUrl, capturedAt:new Date().toISOString() } });
-    }
-  }
-  const stored = await chrome.storage.local.get({ "chute-ingest-count":0 });
-  const count = (Number(stored["chute-ingest-count"]) || 0) + written;
-  await chrome.storage.local.set({ "chute-ingest-count":count });
-  return { ok:true, written, count };
-}
-
-async function openChutePanel(sender, settings = false) {
-  if (!Number.isInteger(sender?.tab?.windowId)) throw new Error("Chute needs an active browser tab to open the panel.");
-  if (settings) await chrome.storage.session.set({ "chute-open-settings":true });
-  await chrome.sidePanel.open({ windowId:sender.tab.windowId });
-  return { ok:true };
 }
 
 function pathSegments(relativePath, root) {
@@ -402,20 +308,12 @@ async function readDraggedFile(message) {
 
 async function handleBridgeMessage(message) {
   if (message?.type === "filechute-read-dragged-file-v1") return readDraggedFile(message);
-  if (message?.type === "filechute-gallery-list-v1") return listGalleryImages(message);
-  if (message?.type === "filechute-gallery-read-v1") return readGalleryImage(message);
+  if (message?.type === "chute-gallery-list-v1") return listGalleryImages(message);
+  if (message?.type === "chute-gallery-read-v1") return readGalleryImage(message);
   return null;
 }
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type === "filechute-open-panel") {
-    void openChutePanel(sender, Boolean(message.settings)).then(sendResponse).catch(error => sendResponse({ ok:false, error:error?.message || String(error) }));
-    return true;
-  }
-  if (message?.type === "chutty-ingest-v1") {
-    void ingestWithChutty(message).then(sendResponse).catch(error => sendResponse({ ok:false, error:error?.message || String(error) }));
-    return true;
-  }
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "filechute-launch-mode-changed") {
     void configureLaunchBehavior(message?.launchMode)
       .then((mode) => sendResponse({ ok: true, launchMode: mode }))
@@ -430,7 +328,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (!["filechute-read-dragged-file-v1", "filechute-gallery-list-v1", "filechute-gallery-read-v1"].includes(message?.type)) return false;
+  if (!["filechute-read-dragged-file-v1", "chute-gallery-list-v1", "chute-gallery-read-v1"].includes(message?.type)) return false;
   void handleBridgeMessage(message)
     .then(sendResponse)
     .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
@@ -438,7 +336,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
-  if (!["filechute-read-dragged-file-v1", "filechute-gallery-list-v1", "filechute-gallery-read-v1"].includes(message?.type)) return false;
+  if (!["filechute-read-dragged-file-v1", "chute-gallery-list-v1", "chute-gallery-read-v1"].includes(message?.type)) return false;
   void handleBridgeMessage(message)
     .then(sendResponse)
     .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
@@ -451,7 +349,7 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
 chrome.action.onClicked.addListener((tab) => {
   void (async () => {
     if ((await fileChuteLaunchMode()) !== "window") return;
-    await openStandaloneChute(tab);
+    await openStandaloneFileChute(tab);
   })();
 });
 
