@@ -67,9 +67,8 @@ function observeBrowserSaves() {
     if (!match?.[1]) return;
 
     // The browser-source handlers know the final filename only after the bytes
-    // have been written. Remember that actual saved name before their quick
-    // path-preserving reload so it rises to the top and gets the existing
-    // FileChute "new" treatment immediately.
+    // have been written. Remember that actual saved name before refreshing so
+    // it rises to the top and gets FileChute's existing "new" treatment.
     rememberRecent(match[1]);
     requestRefresh();
   };
@@ -121,48 +120,17 @@ function armDragWatchdog() {
   }, DRAG_WATCHDOG_MS);
 }
 
-function freshFile(file) {
-  if (!(file instanceof File)) return file;
-  try {
-    // A fresh File wrapper for every outbound drag prevents Chromium from
-    // reusing a stale DataTransfer-backed File object after several
-    // extension-to-page drops. Blob parts are referenced, not eagerly copied.
-    return new File([file], file.name, {
-      type: file.type || "application/octet-stream",
-      lastModified: file.lastModified || Date.now()
-    });
-  } catch {
-    return file;
-  }
-}
-
-function refreshNativeDragFiles(transfer) {
-  if (!transfer?.items) return;
-
-  let files = [];
-  try { files = [...(transfer.files || [])]; } catch {}
-  if (!files.length) return;
-
-  // sidepanel.js has already populated DataTransfer by the time this bubbling
-  // listener runs. Replace only the file items with fresh File wrappers while
-  // leaving FileChute's custom protocol/string flavors intact.
-  try {
-    for (let index = transfer.items.length - 1; index >= 0; index -= 1) {
-      if (transfer.items[index]?.kind === "file") transfer.items.remove(index);
-    }
-    for (const file of files) transfer.items.add(freshFile(file));
-  } catch (error) {
-    console.debug("FileChute kept Chromium's original drag File object", error);
-  }
-}
-
 function installOutboundDragHardening() {
   document.addEventListener("dragstart", (event) => {
     const target = event.target instanceof Element ? event.target : null;
     if (!target?.closest("#entries")) return;
 
     resetShelfDragState();
-    refreshNativeDragFiles(event.dataTransfer);
+
+    // Do not remove and recreate DataTransfer file items here. sidepanel.js
+    // already inserted the real File. Windows Chromium can allow removal but
+    // then refuse the scripted re-add, leaving a drag that looks active while
+    // carrying no usable file at all.
     document.documentElement.classList.add("filechute-dragging");
     document.body.classList.add("filechute-dragging");
     armDragWatchdog();
@@ -185,10 +153,7 @@ observeBrowserSaves();
 installOutboundDragHardening();
 
 // sidepanel.js already performs a guarded once-per-second filesystem scan.
-// Do not stack another 250 ms poll on top of it: on larger shelves that caused
-// hundreds of directory-entry reads while the user was dragging and could make
-// the side panel appear stuck after several cross-page drops. Keep this helper
-// event-driven instead: manual refresh plus focus/visibility refreshes.
+// Keep this helper event-driven: manual refresh plus focus/visibility refreshes.
 window.addEventListener("focus", () => requestRefresh());
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) requestRefresh();
