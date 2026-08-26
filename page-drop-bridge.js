@@ -1,6 +1,8 @@
 (() => {
   const MARKER = "__filechute_page_drop_bridge_v1__";
   const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
+  const COMPACT_PREFIX = "FILECHUTE1|";
+  const LEGACY_PREFIX = "filechute-transfer-v1:";
   const GENERATION = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   globalThis[MARKER] = GENERATION;
 
@@ -16,13 +18,62 @@
     return globalThis[MARKER] === GENERATION && extensionContextAvailable();
   }
 
+  function validPayload(payload) {
+    return payload?.protocol === "filechute-item" && payload?.version === 1 ? payload : null;
+  }
+
+  function parseCompact(text) {
+    if (!text.startsWith(COMPACT_PREFIX)) return null;
+    const parts = text.slice(COMPACT_PREFIX.length).split("|");
+    if (parts.length < 5) return null;
+    const [sourceExtensionId, transferToken, kindCode, encodedPath, ...nameParts] = parts;
+    if (!sourceExtensionId || !transferToken) return null;
+
+    try {
+      const relativePath = decodeURIComponent(encodedPath || "");
+      const originalName = decodeURIComponent(nameParts.join("|") || "");
+      return {
+        protocol: "filechute-item",
+        version: 1,
+        kind: kindCode === "d" ? "directory" : "file",
+        name: originalName,
+        originalName,
+        representation: "original",
+        mime: kindCode === "d" ? "inode/directory" : "",
+        relativePath,
+        sourceUrl: null,
+        parentPageUrl: null,
+        size: null,
+        lastModified: null,
+        sourceExtensionId,
+        transferToken
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function parseLegacy(text) {
+    if (!text.startsWith(LEGACY_PREFIX)) return null;
+    try {
+      return validPayload(JSON.parse(decodeURIComponent(text.slice(LEGACY_PREFIX.length))));
+    } catch {
+      return null;
+    }
+  }
+
   function parsePayload(transfer) {
     try {
       const raw = transfer?.getData(FILECHUTE_DRAG_TYPE);
-      if (!raw) return null;
-      const payload = JSON.parse(raw);
-      if (payload?.protocol !== "filechute-item" || payload?.version !== 1) return null;
-      return payload;
+      if (raw) {
+        const payload = validPayload(JSON.parse(raw));
+        if (payload) return payload;
+      }
+    } catch {}
+
+    try {
+      const text = String(transfer?.getData("text/plain") || "");
+      return parseCompact(text) || parseLegacy(text);
     } catch {
       return null;
     }
@@ -140,10 +191,6 @@
       }
     }
 
-    // Keep inputs nearest the physical drop target ahead of unrelated visible
-    // inputs elsewhere on the page. Yandex and Google can keep several hidden
-    // file inputs around at once; sorting every input only by visibility could
-    // hand the image to the wrong control and make it briefly appear then vanish.
     collectInputs(document, global);
     const remaining = global.filter((input) => !local.includes(input));
     local.sort((a, b) => Number(visible(b)) - Number(visible(a)));
@@ -273,12 +320,8 @@
   document.addEventListener("dragover", (event) => {
     if (!activeBridge()) return;
     const types = [...(event.dataTransfer?.types || [])];
-    if (!types.includes(FILECHUTE_DRAG_TYPE)) return;
+    if (!types.includes(FILECHUTE_DRAG_TYPE) && !types.includes("text/plain")) return;
 
-    // A cross-process Chromium drag can advertise the string "Files" even
-    // when the target page receives an empty FileList. Do not treat that label
-    // as proof that the bytes survived. Keep the page drop-eligible and decide
-    // at the actual drop event whether a usable native File exists.
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
   }, true);
@@ -288,12 +331,11 @@
     const payload = parsePayload(event.dataTransfer);
     if (!payload) return;
 
-    // Only stand down when the target page really received a File object.
-    // Merely seeing a "Files" type is insufficient; Chrome can leave behind a
-    // phantom Files flavor after several extension-to-page drag sessions.
     if (hasUsableNativeFile(event.dataTransfer)) return;
 
     event.preventDefault();
+    event.stopImmediatePropagation();
+    showToast(`FileChute ticket caught: ${payload.originalName || payload.name || "item"}`);
 
     void receive(payload, event).catch((error) => {
       clearPageDropState(event.target, event);
