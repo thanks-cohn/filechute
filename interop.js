@@ -2,7 +2,7 @@ import { writeStored } from "./storage.js";
 
 export const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
 export const FILECHUTE_VERSION = 1;
-export const FILECHUTE_TEXT_PREFIX = "filechute-transfer-v1:";
+export const FILECHUTE_TEXT_PREFIX = "FILECHUTE1|";
 
 const TRANSFER_FILE_CACHE_KEY = "filechute-transfer-file-cache-v1";
 
@@ -60,21 +60,45 @@ function cacheTransferFile(payload, file) {
   });
 }
 
-function textEnvelope(payload) {
-  try {
-    return `${FILECHUTE_TEXT_PREFIX}${encodeURIComponent(JSON.stringify(payload))}`;
-  } catch {
-    return "";
-  }
+function compactTicket(payload) {
+  const extensionId = String(payload?.sourceExtensionId || globalThis.chrome?.runtime?.id || "");
+  const token = String(payload?.transferToken || "");
+  const kind = payload?.kind === "directory" ? "d" : "f";
+  const path = encodeURIComponent(String(payload?.relativePath || ""));
+  const name = encodeURIComponent(String(payload?.originalName || payload?.name || ""));
+  if (!extensionId || !token) return "";
+  return `${FILECHUTE_TEXT_PREFIX}${extensionId}|${token}|${kind}|${path}|${name}`;
 }
 
-function payloadFromText(value) {
+export function payloadFromTextTicket(value) {
   const text = String(value || "");
   if (!text.startsWith(FILECHUTE_TEXT_PREFIX)) return null;
+
+  const parts = text.slice(FILECHUTE_TEXT_PREFIX.length).split("|");
+  if (parts.length < 5) return null;
+
+  const [sourceExtensionId, transferToken, kindCode, encodedPath, ...nameParts] = parts;
+  if (!sourceExtensionId || !transferToken) return null;
+
   try {
-    const payload = JSON.parse(decodeURIComponent(text.slice(FILECHUTE_TEXT_PREFIX.length)));
-    if (payload?.protocol !== "filechute-item" || payload.version !== FILECHUTE_VERSION) return null;
-    return payload;
+    const relativePath = decodeURIComponent(encodedPath || "");
+    const originalName = decodeURIComponent(nameParts.join("|") || "");
+    return {
+      protocol: "filechute-item",
+      version: FILECHUTE_VERSION,
+      kind: kindCode === "d" ? "directory" : "file",
+      name: originalName,
+      originalName,
+      representation: "original",
+      mime: kindCode === "d" ? "inode/directory" : "",
+      relativePath,
+      sourceUrl: null,
+      parentPageUrl: null,
+      size: null,
+      lastModified: null,
+      sourceExtensionId,
+      transferToken
+    };
   } catch {
     return null;
   }
@@ -96,20 +120,19 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
     } catch {}
   }
 
-  // Keep the private MIME flavor for same-renderer / browsers that preserve it.
+  // Preserve the full FileChute payload where Chromium allows custom flavors.
   try {
     transfer.setData(FILECHUTE_DRAG_TYPE, JSON.stringify(payload));
   } catch {}
 
-  // Chromium is not reliable about preserving custom drag flavors when a drag
-  // leaves an extension side panel for another renderer. Whenever there is no
-  // trustworthy native File item, carry the same payload inside text/plain.
-  // Receivers recognize this prefix in capture phase and consume it before the
-  // target website sees it as text.
+  // When there is no trustworthy native File, also expose a very small standard
+  // text flavor. Windows Chromium has proven much more reliable with short
+  // text/plain drag data than with script-created File items or large JSON
+  // payloads crossing from the extension side panel into another renderer.
   if (!fileAdded) {
-    const envelope = textEnvelope(payload);
-    if (envelope) {
-      try { transfer.setData("text/plain", envelope); } catch {}
+    const ticket = compactTicket(payload);
+    if (ticket) {
+      try { transfer.setData("text/plain", ticket); } catch {}
     }
   }
 
@@ -135,7 +158,7 @@ export function readFileChuteDrag(transfer) {
   } catch {}
 
   try {
-    return payloadFromText(transfer?.getData("text/plain"));
+    return payloadFromTextTicket(transfer?.getData("text/plain"));
   } catch {
     return null;
   }
