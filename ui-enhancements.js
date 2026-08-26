@@ -1,7 +1,7 @@
 import { readStored } from "./storage.js";
 
 const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
-const CHUTE_DRAG_TYPE = "application/x-chute-item";
+const CHUTE_DRAG_TYPE = "application/x-filechute-item";
 const ROOT_HANDLE_KEY = "filechute-root-handle";
 const RESTORE_PATH_KEY = "filechute-restore-path-v1";
 const RECENT_KEY = "filechute-recent-drops-v1";
@@ -30,7 +30,7 @@ function setStatus(message, error = false) {
 function injectStyles() {
   if (document.querySelector("style[data-filechute-ui-enhancements]")) return;
   const style = document.createElement("style");
-  style.dataset.filechuteUiEnhancements = "true";
+  style.dataset.chuteUiEnhancements = "true";
   style.textContent = `
     .filechute-nav-tools {
       display: grid;
@@ -287,8 +287,8 @@ function normalizeNameLine(row) {
     name.prepend(grip);
   }
 
-  if (grip.dataset.filechuteWired !== "true") {
-    grip.dataset.filechuteWired = "true";
+  if (grip.dataset.chuteWired !== "true") {
+    grip.dataset.chuteWired = "true";
     grip.draggable = true;
     grip.title = row.classList.contains("directory") ? "Drag this folder" : "Drag the full original file";
     grip.setAttribute("aria-label", grip.title);
@@ -370,7 +370,7 @@ function normalizeTypedPath(value) {
 async function navigateTypedLocation(value, { silent = false } = {}) {
   const parts = currentBreadcrumbParts();
   if (!parts.length) {
-    if (!silent) setStatus("Choose a FileChute root folder first.", true);
+    if (!silent) setStatus("Choose a Chute root folder first.", true);
     return false;
   }
 
@@ -392,12 +392,12 @@ async function navigateTypedLocation(value, { silent = false } = {}) {
 
   for (const segment of requested) {
     if (segment === "..") {
-      if (!silent) setStatus("Use FileChute's Back button to move upward.", true);
+      if (!silent) setStatus("Use Chute's Back button to move upward.", true);
       return false;
     }
     const row = await waitForDirectoryRow(segment);
     if (!row) {
-      if (!silent) setStatus(`FileChute cannot open “${segment}” under the selected root. Choose folder once if it is outside FileChute's permitted tree.`, true);
+      if (!silent) setStatus(`Chute cannot open “${segment}” under the selected root. Choose folder once if it is outside Chute's permitted tree.`, true);
       return false;
     }
     row.querySelector(".entry-name")?.click();
@@ -439,7 +439,7 @@ function installNavigationTools() {
   locationInput.autocomplete = "off";
   locationInput.spellcheck = false;
   locationInput.placeholder = "Pictures/Screenshots";
-  locationInput.setAttribute("aria-label", "FileChute location");
+  locationInput.setAttribute("aria-label", "Chute location");
 
   const go = document.createElement("button");
   go.type = "button";
@@ -451,6 +451,7 @@ function installNavigationTools() {
   searchWrap.className = "filechute-search-wrap";
   searchWrap.title = "Filter files and folders by typed name";
   searchInput = document.createElement("input");
+  searchInput.id = "file-search";
   searchInput.className = "filechute-search";
   searchInput.type = "search";
   searchInput.placeholder = "Search files by name…";
@@ -522,7 +523,7 @@ async function scanDisplayedDirectory() {
     lastDirectoryNames = names;
     scheduleReload();
   } catch (error) {
-    console.debug("FileChute live directory refresh skipped", error);
+    console.debug("Chute live directory refresh skipped", error);
   } finally {
     pollBusy = false;
   }

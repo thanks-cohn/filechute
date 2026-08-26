@@ -239,7 +239,7 @@ async function applySettings() {
 
   preserveCurrentPathForReload();
   settingsDialog?.close("ok");
-  setStatus("Applying FileChute settings…");
+  setStatus("Applying Chute settings…");
   location.reload();
 }
 
@@ -266,8 +266,8 @@ for (const control of [
 settingsForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   void applySettings().catch((error) => {
-    console.error("Could not apply FileChute settings", error);
-    setStatus(error?.message || "Could not apply FileChute settings.", true);
+    console.error("Could not apply Chute settings", error);
+    setStatus(error?.message || "Could not apply Chute settings.", true);
   });
 });
 

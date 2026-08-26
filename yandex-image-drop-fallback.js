@@ -76,9 +76,9 @@ async function requestPermission(handle, mode = "readwrite") {
 
 async function resolveDirectory(pathNames) {
   const root = await readStored(ROOT_HANDLE_KEY);
-  if (!root || root.kind !== "directory") throw new Error("Choose a FileChute folder first.");
+  if (!root || root.kind !== "directory") throw new Error("Choose a Chute folder first.");
   if (!(await requestPermission(root))) {
-    throw new Error(`Chromium needs permission for ${root.name || "the FileChute folder"}. Reconnect it and try again.`);
+    throw new Error(`Chromium needs permission for ${root.name || "the Chute folder"}. Reconnect it and try again.`);
   }
   let directory = root;
   for (const name of pathNames || []) directory = await directory.getDirectoryHandle(name);
@@ -305,12 +305,12 @@ document.addEventListener("drop", (event) => {
         }
       }
 
-      console.warn("FileChute exhausted captured Yandex image sources", failures);
+      console.warn("Chute exhausted captured Yandex image sources", failures);
       throw new Error("Yandex supplied an image drag shell, but none of its captured image sources could be read. Refresh the Yandex Images tab and try the visible thumbnail again.");
     })
     .then((message) => preservePathAndReload(message))
     .catch((error) => {
-      console.error("FileChute Yandex image drop failed", {
+      console.error("Chute Yandex image drop failed", {
         name: error?.name,
         message: error?.message,
         stack: error?.stack,

@@ -102,17 +102,17 @@ async function syncSaveButtons() {
       if (!saveLikeControl(control)) continue;
 
       if (keepUsingFolder) {
-        if (!control.hidden) control.dataset.filechuteAutoSaveHidden = "true";
+        if (!control.hidden) control.dataset.chuteAutoSaveHidden = "true";
         control.hidden = true;
         control.classList.add("filechute-auto-hidden-save");
         control.setAttribute("aria-hidden", "true");
         control.setAttribute("tabindex", "-1");
-      } else if (control.dataset.filechuteAutoSaveHidden === "true") {
+      } else if (control.dataset.chuteAutoSaveHidden === "true") {
         control.hidden = false;
         control.classList.remove("filechute-auto-hidden-save");
         control.removeAttribute("aria-hidden");
         control.removeAttribute("tabindex");
-        delete control.dataset.filechuteAutoSaveHidden;
+        delete control.dataset.chuteAutoSaveHidden;
       }
     }
   } finally {
@@ -123,7 +123,7 @@ async function syncSaveButtons() {
 function injectStyles() {
   if (document.querySelector("style[data-filechute-image-resize]")) return;
   const style = document.createElement("style");
-  style.dataset.filechuteImageResize = "true";
+  style.dataset.chuteImageResize = "true";
   style.textContent = `
     .filechute-entry-actions {
       display: flex;
@@ -196,7 +196,7 @@ function makeSettingsSection() {
   section.className = "settings-section";
   section.innerHTML = `
     <h3>Image resize</h3>
-    <p class="settings-note">Resize runs entirely inside FileChute. Originals are preserved and resized images are created as new files beside them.</p>
+    <p class="settings-note">Resize runs entirely inside Chute. Originals are preserved and resized images are created as new files beside them.</p>
     <label class="setting-row checkbox-row">
       <span>Maintain aspect ratio</span>
       <input id="resize-maintain-aspect" type="checkbox" checked>
@@ -208,7 +208,7 @@ function makeSettingsSection() {
     <label class="setting-stack" for="resize-fill-color">
       <span>Fill color</span>
       <input id="resize-fill-color" class="resize-settings-color" type="color" value="#000000">
-      <small>Default: black. When aspect ratio is preserved and the requested width × height has a different shape, FileChute fills the unused space with this color. Turn on Do not fill to let the other side change instead.</small>
+      <small>Default: black. When aspect ratio is preserved and the requested width × height has a different shape, Chute fills the unused space with this color. Turn on Do not fill to let the other side change instead.</small>
     </label>
   `;
 
@@ -456,12 +456,12 @@ function dimensionEdited(which) {
 
 async function resolveRowFile(row, { request = false } = {}) {
   const root = await rootHandle({ request });
-  if (!root) throw new Error("FileChute needs write access to the remembered folder before it can resize this image.");
+  if (!root) throw new Error("Chute needs write access to the remembered folder before it can resize this image.");
 
   const rawPath = String(row.querySelector(".entry-path")?.textContent || "").trim();
   let parts = rawPath.split("/").map((part) => part.trim()).filter(Boolean);
   if (parts[0]?.toLocaleLowerCase() === String(root.name || "").toLocaleLowerCase()) parts = parts.slice(1);
-  if (!parts.length) throw new Error("FileChute could not resolve this image path.");
+  if (!parts.length) throw new Error("Chute could not resolve this image path.");
 
   const fileName = parts.pop();
   let directory = root;
@@ -494,7 +494,7 @@ async function openResize(row) {
     elements.width?.select();
     void syncSaveButtons();
   } catch (error) {
-    console.error("FileChute image resize could not open", error);
+    console.error("Chute image resize could not open", error);
     setStatus(error?.message || "Could not open image resize.", true);
   }
 }
@@ -592,13 +592,13 @@ async function createResizedCopy() {
 
       setStatus(`Created ${outputName} beside the original.`);
       dialog?.close("ok");
-      window.dispatchEvent(new CustomEvent("filechute:filesystem-changed"));
+      window.dispatchEvent(new CustomEvent("chute:filesystem-changed"));
       resizeTarget = null;
     } finally {
       bitmap.close();
     }
   } catch (error) {
-    console.error("FileChute image resize failed", error);
+    console.error("Chute image resize failed", error);
     setStatus(error?.message || "Could not resize this image.", true);
   } finally {
     if (create) {
@@ -678,5 +678,5 @@ async function initialize() {
 }
 
 void initialize().catch((error) => {
-  console.error("Could not initialize FileChute image resize", error);
+  console.error("Could not initialize Chute image resize", error);
 });

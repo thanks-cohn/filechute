@@ -1,13 +1,7 @@
 import { readStored, writeStored } from "./storage.js";
-import { makeFileChutePayload, writeFileChuteDrag } from "./interop.js";
+import { makeChutePayload, writeChuteDrag } from "./interop.js";
+import { metadataFor } from "./metadata-store.js";
 import {
-  chooseExternalMetadataDirectory,
-  externalMetadataStatus,
-  metadataFor
-} from "./metadata-store.js";
-import {
-  chooseExternalThumbnailDirectory,
-  externalThumbnailStatus,
   loadThumbnail,
   makeThumbnailKey,
   saveThumbnail
@@ -27,8 +21,6 @@ const SHOW_OTHER_FILES_KEY = "filechute-show-other-files";
 const SHOW_DIRECTORIES_KEY = "filechute-show-directories";
 const LEGACY_VIEW_MODE_KEY = "filechute-view-mode";
 const DIRECTORY_POSITION_KEY = "filechute-directory-position";
-const METADATA_CHOICE_KEY = "filechute-metadata-storage-choice";
-const THUMBNAIL_CHOICE_KEY = "filechute-thumbnail-storage-choice";
 const RECENT_KEY = "filechute-recent-drops-v1";
 
 const DEFAULT_THUMBNAIL_SIZE = 48;
@@ -61,8 +53,6 @@ const entryTemplate = document.querySelector("#entry-template");
 const settingsDialog = document.querySelector("#settings-dialog");
 const thumbnailSizeInput = document.querySelector("#thumbnail-size");
 const thumbnailSizeValue = document.querySelector("#thumbnail-size-value");
-const metadataLocationButton = document.querySelector("#metadata-location");
-const thumbnailLocationButton = document.querySelector("#thumbnail-location");
 
 let rootHandle = null;
 let pathHandles = [];
@@ -71,6 +61,8 @@ let directorySnapshot = [];
 let directorySignature = "";
 let pageIndex = 0;
 let renderGeneration = 0;
+let searchGeneration = 0;
+let recursiveSearchResults = null;
 let pollBusy = false;
 
 let showThumbnails = true;
@@ -356,7 +348,7 @@ function copyPathHandler(pathButton, relativePath) {
 }
 
 function buildPayload({ handle, name, file, metadata, relativePath, representation = "original" }) {
-  return makeFileChutePayload({
+  return makeChutePayload({
     kind: handle.kind === "directory" ? "directory" : "file",
     name: representation === "thumbnail" ? thumbnailFileName(name) : name,
     originalName: name,
@@ -426,7 +418,7 @@ function startDrag({ event, row, preview, payload, file }) {
   const transfer = event.dataTransfer;
   if (!transfer) return;
   row.classList.add("dragging");
-  writeFileChuteDrag(transfer, payload, file);
+  writeChuteDrag(transfer, payload, file);
   if (preview && !preview.hidden) {
     try {
       transfer.setDragImage(preview, thumbnailSize / 2, thumbnailSize / 2);
@@ -462,7 +454,7 @@ async function renderEntry(item, generation) {
   const fallback = row.querySelector(".fallback-icon");
   const nameElement = row.querySelector(".entry-name");
   const pathButton = row.querySelector(".entry-path");
-  const relativePath = childLocation(name);
+  const relativePath = item.relativePath || childLocation(name);
 
   row.draggable = false;
   preview.draggable = false;
@@ -473,7 +465,7 @@ async function renderEntry(item, generation) {
 
   if (handle.kind === "directory") {
     row.classList.add("directory");
-    row.dataset.filechuteDirectory = "true";
+    row.dataset.chuteDirectory = "true";
     fallback.textContent = "📁";
     fallback.hidden = false;
 
@@ -601,7 +593,8 @@ async function renderEntry(item, generation) {
 
 function filteredSnapshot() {
   const query = String(searchInput?.value || "").trim().toLocaleLowerCase();
-  const matches = directorySnapshot.filter(
+  const source = query && recursiveSearchResults ? recursiveSearchResults : directorySnapshot;
+  const matches = source.filter(
     (item) => !query || item.name.toLocaleLowerCase().includes(query)
   );
 
@@ -615,6 +608,29 @@ function filteredSnapshot() {
   sortByName(directories);
   sortFiles(files);
   return { directories, files, query };
+}
+
+async function recursiveSearch(query, generation) {
+  const matches = [];
+  let visited = 0;
+  async function walk(directory, segments) {
+    for await (const [name, handle] of directory.entries()) {
+      if (generation !== searchGeneration) return;
+      const next = [...segments, name];
+      if (handle.kind === "directory") {
+        await walk(handle, next);
+      } else if (name.toLocaleLowerCase().includes(query)) {
+        matches.push({ name, handle, relativePath:[rootHandle.name, ...next].join("/") });
+      }
+      visited += 1;
+      if (visited % 100 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  }
+  await walk(rootHandle, []);
+  if (generation !== searchGeneration) return;
+  recursiveSearchResults = matches;
+  resetPage();
+  renderSnapshot();
 }
 
 function updatePageControls(totalFiles) {
@@ -694,7 +710,7 @@ async function renderDirectory() {
     directorySnapshot = [];
     directorySignature = "";
     if (pageControls) pageControls.hidden = true;
-    entriesElement.innerHTML = '<div class="empty">Choose a folder above and FileChute will show exactly what is inside it.</div>';
+    entriesElement.innerHTML = '<div class="empty">Choose a folder above and Chute will show exactly what is inside it.</div>';
     setStatus("Choose a local folder to begin.");
     return;
   }
@@ -703,7 +719,7 @@ async function renderDirectory() {
     directorySnapshot = [];
     directorySignature = "";
     if (pageControls) pageControls.hidden = true;
-    entriesElement.innerHTML = '<div class="empty">FileChute remembers this folder, but Chromium needs permission again. Reconnect it or choose another folder.</div>';
+    entriesElement.innerHTML = '<div class="empty">Chute remembers this folder, but Chromium needs permission again. Reconnect it or choose another folder.</div>';
     setStatus("Folder permission needs to be restored.", true);
     return;
   }
@@ -714,7 +730,7 @@ async function renderDirectory() {
     directorySignature = snapshotSignature(directorySnapshot);
     renderSnapshot();
   } catch (error) {
-    console.error("FileChute could not enumerate directory", error);
+    console.error("Chute could not enumerate directory", error);
     setStatus("Could not read this folder.", true);
   }
 }
@@ -746,23 +762,6 @@ async function restorePathIfNeeded() {
   pathNames = names;
 }
 
-async function refreshStorageLabels() {
-  const metadata = await externalMetadataStatus();
-  const thumbs = await externalThumbnailStatus();
-
-  if (metadataLocationButton) {
-    metadataLocationButton.textContent = metadata.configured
-      ? `Metadata: ${metadata.name}${metadata.available ? "" : " · reconnect"}`
-      : "Metadata: browser only";
-  }
-
-  if (thumbnailLocationButton) {
-    thumbnailLocationButton.textContent = thumbs.configured
-      ? `Thumbs: ${thumbs.name}${thumbs.available ? "" : " · reconnect"}`
-      : "Thumbs: browser only";
-  }
-}
-
 async function scanForFilesystemChanges() {
   if (pollBusy || document.hidden || settingsDialog?.open || !currentDirectory()) return;
   pollBusy = true;
@@ -785,7 +784,7 @@ async function scanForFilesystemChanges() {
     directorySignature = signature;
     renderSnapshot();
   } catch (error) {
-    console.debug("FileChute filesystem refresh skipped", error);
+    console.debug("Chute filesystem refresh skipped", error);
   } finally {
     pollBusy = false;
   }
@@ -861,8 +860,19 @@ homeButton?.addEventListener("click", async () => {
 });
 
 searchInput?.addEventListener("input", () => {
+  const generation = ++searchGeneration;
+  const query = String(searchInput.value || "").trim().toLocaleLowerCase();
+  recursiveSearchResults = query ? [] : null;
   resetPage();
   renderSnapshot();
+  if (query && rootHandle) {
+    setStatus(`Searching ${rootHandle.name} recursively…`);
+    void recursiveSearch(query, generation).catch(error => {
+      if (generation !== searchGeneration) return;
+      console.warn("Chute recursive search failed", error);
+      setStatus("Search could not read part of the selected folder.", true);
+    });
+  }
 });
 
 pagePrevButton?.addEventListener("click", () => {
@@ -889,49 +899,10 @@ thumbnailSizeInput?.addEventListener("input", () => {
 });
 
 settingsButton?.addEventListener("click", () => {
-  void refreshStorageLabels();
   settingsDialog?.showModal();
 });
 
-metadataLocationButton?.addEventListener("click", async () => {
-  try {
-    const handle = await chooseExternalMetadataDirectory();
-    if (!handle) return;
-    await writeStored(METADATA_CHOICE_KEY, "external");
-    await refreshStorageLabels();
-    setStatus(`Metadata will also be saved in ${handle.name}.`);
-  } catch (error) {
-    if (error?.name !== "AbortError") {
-      console.error("Could not choose FileChute metadata folder", {
-        name: error?.name,
-        message: error?.message,
-        error
-      });
-      setStatus("Could not choose metadata folder.", true);
-    }
-  }
-});
-
-thumbnailLocationButton?.addEventListener("click", async () => {
-  try {
-    const handle = await chooseExternalThumbnailDirectory();
-    if (!handle) return;
-    await writeStored(THUMBNAIL_CHOICE_KEY, "external");
-    await refreshStorageLabels();
-    setStatus(`Generated thumbnails will also be saved in ${handle.name}.`);
-  } catch (error) {
-    if (error?.name !== "AbortError") {
-      console.error("Could not choose FileChute thumbnail folder", {
-        name: error?.name,
-        message: error?.message,
-        error
-      });
-      setStatus("Could not choose thumbnail folder.", true);
-    }
-  }
-});
-
-window.addEventListener("filechute:filesystem-changed", () => {
+window.addEventListener("chute:filesystem-changed", () => {
   void scanForFilesystemChanges();
 });
 
@@ -965,13 +936,18 @@ async function initialize() {
   applyThumbnailSize();
   rootHandle = await readStored(ROOT_HANDLE_KEY);
   await restorePathIfNeeded();
-  await refreshStorageLabels();
   await renderDirectory();
+
+  const openSettings = await chrome.storage.session.get("filechute-open-settings").catch(() => ({}));
+  if (openSettings?.["filechute-open-settings"]) {
+    await chrome.storage.session.remove("filechute-open-settings").catch(() => {});
+    settingsDialog?.showModal();
+  }
 
   setInterval(() => void scanForFilesystemChanges(), 1000);
 }
 
 initialize().catch((error) => {
-  console.error("FileChute could not initialize", error);
-  setStatus("FileChute could not initialize.", true);
+  console.error("Chute could not initialize", error);
+  setStatus("Chute could not initialize.", true);
 });

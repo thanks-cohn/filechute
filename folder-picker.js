@@ -31,7 +31,7 @@ async function choosePicturesFirst() {
 }
 
 chooseRootButton?.addEventListener("click", (event) => {
-  // FileChute owns folder selection here so the older sidepanel listener does
+  // Chute owns folder selection here so the older sidepanel listener does
   // not open a second picker. This runs in capture phase before that listener.
   event.preventDefault();
   event.stopImmediatePropagation();
@@ -45,7 +45,7 @@ chooseRootButton?.addEventListener("click", (event) => {
       location.reload();
     } catch (error) {
       if (error?.name === "AbortError") return;
-      console.error("FileChute folder picker failed", error);
+      console.error("Chute folder picker failed", error);
       setStatus(error?.message || "Could not choose that folder.", true);
     }
   })();

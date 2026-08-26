@@ -52,8 +52,8 @@ async function rootHandle() {
 
 async function resolveDirectory(pathNames) {
   const root = await rootHandle();
-  if (!root || root.kind !== "directory") throw new Error("Choose a FileChute folder first.");
-  if (!(await requestPermission(root))) throw new Error(`Chromium needs permission for ${root.name || "the FileChute folder"}. Use Reconnect and try again.`);
+  if (!root || root.kind !== "directory") throw new Error("Choose a Chute folder first.");
+  if (!(await requestPermission(root))) throw new Error(`Chromium needs permission for ${root.name || "the Chute folder"}. Use Reconnect and try again.`);
 
   let directory = root;
   for (const name of pathNames || []) directory = await directory.getDirectoryHandle(name);
@@ -274,7 +274,7 @@ async function receiveNativeDrop(transfer, targetPathNames) {
       files += copied.files;
       folders += copied.folders;
     }
-    return { message: `Copied ${files} file${files === 1 ? "" : "s"}${folders ? ` and ${folders} folder${folders === 1 ? "" : "s"}` : ""} into FileChute.` };
+    return { message: `Copied ${files} file${files === 1 ? "" : "s"}${folders ? ` and ${folders} folder${folders === 1 ? "" : "s"}` : ""} into Chute.` };
   }
 
   const files = [...transfer.files || []];
@@ -284,7 +284,7 @@ async function receiveNativeDrop(transfer, targetPathNames) {
       await writeFile(destination, targetPathNames, file, file.name);
       copied += 1;
     }
-    return { message: `Copied ${copied} file${copied === 1 ? "" : "s"} into FileChute.` };
+    return { message: `Copied ${copied} file${copied === 1 ? "" : "s"} into Chute.` };
   }
 
   const browserUrl = httpUrl(
@@ -294,10 +294,10 @@ async function receiveNativeDrop(transfer, targetPathNames) {
   );
   if (browserUrl) {
     const name = await saveBrowserUrl(browserUrl, destination, targetPathNames);
-    return { message: `Saved ${name} into FileChute.` };
+    return { message: `Saved ${name} into Chute.` };
   }
 
-  throw new Error("That drag did not contain a file, folder, or browser resource FileChute can save.");
+  throw new Error("That drag did not contain a file, folder, or browser resource Chute can save.");
 }
 
 function targetPathForEvent(event) {
@@ -367,8 +367,8 @@ document.addEventListener("drop", (event) => {
   void receiveNativeDrop(transfer, targetPathNames)
     .then(({ message }) => preserveCurrentPathAndReload(message))
     .catch((error) => {
-      console.error("FileChute incoming drop failed", error);
-      setStatus(error?.message || "Could not copy that drop into FileChute.", true);
+      console.error("Chute incoming drop failed", error);
+      setStatus(error?.message || "Could not copy that drop into Chute.", true);
     });
 }, true);
 

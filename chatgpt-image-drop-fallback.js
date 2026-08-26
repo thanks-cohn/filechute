@@ -74,8 +74,8 @@ async function requestPermission(handle, mode = "readwrite") {
 
 async function resolveDirectory(pathNames) {
   const root = await readStored(ROOT_HANDLE_KEY);
-  if (!root || root.kind !== "directory") throw new Error("Choose a FileChute folder first.");
-  if (!(await requestPermission(root))) throw new Error(`Chromium needs permission for ${root.name || "the FileChute folder"}. Reconnect it and try again.`);
+  if (!root || root.kind !== "directory") throw new Error("Choose a Chute folder first.");
+  if (!(await requestPermission(root))) throw new Error(`Chromium needs permission for ${root.name || "the Chute folder"}. Reconnect it and try again.`);
   let directory = root;
   for (const name of pathNames || []) directory = await directory.getDirectoryHandle(name);
   return { root, directory };
@@ -161,7 +161,7 @@ async function activeSourceTab() {
 
 async function pageBridgeFile(value, title) {
   const tab = await activeSourceTab();
-  if (!tab?.id) throw new Error("FileChute could not identify the ChatGPT tab that created this image.");
+  if (!tab?.id) throw new Error("Chute could not identify the ChatGPT tab that created this image.");
   const response = await chrome.tabs.sendMessage(tab.id, {
     type: "filechute-read-page-resource-v1",
     url: value,
@@ -282,12 +282,12 @@ document.addEventListener("drop", (event) => {
         }
       }
 
-      console.warn("FileChute exhausted captured ChatGPT image sources", failures);
-      throw new Error("ChatGPT supplied an image drag, but FileChute could not read any captured image source. Refresh this ChatGPT tab after reloading FileChute and try again.");
+      console.warn("Chute exhausted captured ChatGPT image sources", failures);
+      throw new Error("ChatGPT supplied an image drag, but Chute could not read any captured image source. Refresh this ChatGPT tab after reloading Chute and try again.");
     })
     .then((message) => preservePathAndReload(message))
     .catch((error) => {
-      console.error("FileChute ChatGPT image drop failed", {
+      console.error("Chute ChatGPT image drop failed", {
         name: error?.name,
         message: error?.message,
         stack: error?.stack,

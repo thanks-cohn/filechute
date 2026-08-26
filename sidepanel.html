@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FileChute</title>
+  <title>Chute</title>
   <link rel="stylesheet" href="sidepanel.css">
   <link rel="stylesheet" href="pagination.css">
   <link rel="stylesheet" href="settings-media.css">
@@ -11,7 +11,7 @@
 <body>
   <header class="topbar">
     <div>
-      <div class="title">FileChute</div>
+      <div class="title">Chute</div>
       <div class="subtitle">Your files, beside the browser.</div>
     </div>
     <div class="topbar-actions">
@@ -55,8 +55,8 @@
     <form id="settings-form" class="dialog-card settings-card">
       <div class="dialog-heading">
         <div>
-          <h2>FileChute settings</h2>
-          <p>Choose what FileChute shows, how much it loads, and whether support data stays browser-only or is mirrored automatically to a remembered local folder.</p>
+          <h2>Chute settings</h2>
+          <p>Choose what Chute shows and how much it loads. Files, previews, and provenance stay local.</p>
         </div>
         <button id="settings-cancel-x" class="dialog-close" type="button" aria-label="Cancel settings">×</button>
       </div>
@@ -64,13 +64,54 @@
       <section class="settings-section">
         <h3>Opening</h3>
         <label class="setting-stack" for="launch-mode">
-          <span>Open FileChute as</span>
+          <span>Open Chute as</span>
           <select id="launch-mode">
             <option value="panel" selected>Browser side panel</option>
             <option value="window">Floating window</option>
           </select>
           <small>Default: browser side panel. It stays open across tabs. Chrome controls whether its side-panel rail appears on the left or right.</small>
         </label>
+      </section>
+
+      <section class="settings-section">
+        <h3>Chutty</h3>
+        <div class="chutty-settings-grid">
+          <label class="setting-row checkbox-row">
+            <span>Show Chutty</span>
+            <input id="chutty-visible" type="checkbox" checked>
+          </label>
+
+          <label class="setting-stack" for="chutty-position">
+            <span>Screen position</span>
+            <select id="chutty-position">
+              <option value="right" selected>Bottom right</option>
+              <option value="left">Bottom left</option>
+            </select>
+          </label>
+
+          <label class="setting-row checkbox-row">
+            <span>Open Chutty's menu on hover</span>
+            <input id="chutty-hover-menu" type="checkbox" checked>
+          </label>
+
+          <label class="setting-row checkbox-row">
+            <span>Click Chutty to cycle animations</span>
+            <input id="chutty-click-cycle" type="checkbox" checked>
+          </label>
+
+          <label class="setting-row checkbox-row">
+            <span>Reveal Support Chutty while playing</span>
+            <input id="chutty-support-visible" type="checkbox" checked>
+          </label>
+        </div>
+
+        <p class="settings-note">The Support Chutty button uses Chute's official support link. The destination is built into the extension and cannot be changed from user settings.</p>
+
+        <div class="setting-stack">
+          <span>Click animation order</span>
+          <small>Turn normal click animations on or off and move them into the order you want. Drop lifecycle animations such as Ready, Eating, Success, and Failure are automatic.</small>
+          <div id="chutty-animation-list" class="chutty-animation-list" aria-label="Chutty animation order"></div>
+        </div>
       </section>
 
       <section class="settings-section">
@@ -116,7 +157,7 @@
             <option value="images">Images first</option>
             <option value="videos">Videos first</option>
           </select>
-          <small>When directories are at the top, this controls what appears immediately underneath them. The default preserves FileChute's current ordering.</small>
+          <small>When directories are at the top, this controls what appears immediately underneath them. The default preserves Chute's current ordering.</small>
         </label>
       </section>
 
@@ -167,22 +208,9 @@
       </section>
 
       <section class="settings-section">
-        <h3>Durable storage</h3>
-        <p class="settings-note">Browser-only is the default. Turn on a local mirror once and FileChute remembers that folder and writes there automatically. Turn it off again to return to browser-only storage. There is no per-item Save step.</p>
-
-        <label class="setting-row checkbox-row">
-          <span>Save metadata to a local folder</span>
-          <input id="metadata-local-enabled" type="checkbox">
-        </label>
-        <button id="metadata-local-location" class="storage-button" type="button" disabled>Metadata: browser only</button>
-
-        <label class="setting-row checkbox-row">
-          <span>Save thumbnails to a local folder</span>
-          <input id="thumbnail-local-enabled" type="checkbox">
-        </label>
-        <button id="thumbnail-local-location" class="storage-button" type="button" disabled>Thumbs: browser only</button>
-
-        <small class="settings-note">If Chromium ever drops filesystem permission, FileChute keeps the remembered folder handle and asks only to reconnect that same folder rather than making you choose it again.</small>
+        <h3>Local storage</h3>
+        <p class="settings-note">Chute keeps the selected folder handle, preferences, previews, and provenance in browser storage. It never asks for a second metadata or thumbnail folder.</p>
+        <small class="settings-note">If Chromium drops filesystem permission, Chute remembers the same handle and offers a reconnect action.</small>
       </section>
 
       <div class="dialog-actions">
@@ -192,17 +220,17 @@
     </form>
   </dialog>
 
+  <script src="rebrand-compat.js"></script>
   <script type="module" src="single-destination-drop.js"></script>
   <script type="module" src="ui-enhancements.js"></script>
   <script type="module" src="directory-visibility.js"></script>
-  <script type="module" src="chute-drop-compat.js"></script>
   <script type="module" src="receive-drops.js"></script>
   <script type="module" src="folder-picker.js"></script>
   <script type="module" src="sidepanel.js"></script>
   <script type="module" src="shelf-live-refresh.js"></script>
   <script type="module" src="directory-drag.js"></script>
+  <script type="module" src="chutty-settings.js"></script>
   <script type="module" src="settings-draft.js"></script>
-  <script type="module" src="durable-storage-settings.js"></script>
   <script type="module" src="first-run.js"></script>
 </body>
 </html>

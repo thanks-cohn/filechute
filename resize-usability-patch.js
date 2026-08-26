@@ -35,7 +35,7 @@ function updateDimensionHints() {
   const height = document.querySelector("#resize-v3-height");
   if (!(width instanceof HTMLInputElement) || !(height instanceof HTMLInputElement)) return;
 
-  // FileChute performs the pair validation itself so either field can be blank
+  // Chute performs the pair validation itself so either field can be blank
   // when aspect ratio is preserved.
   width.required = false;
   height.required = false;
@@ -67,7 +67,7 @@ function prepareSingleDimensionSubmit(event) {
   if (!width && !height) {
     event.preventDefault();
     event.stopImmediatePropagation();
-    setStatus("Enter a width or a height. FileChute will calculate the other side automatically.", true);
+    setStatus("Enter a width or a height. Chute will calculate the other side automatically.", true);
     return;
   }
 
@@ -77,7 +77,7 @@ function prepareSingleDimensionSubmit(event) {
   if (!source) {
     event.preventDefault();
     event.stopImmediatePropagation();
-    setStatus("FileChute could not read the original aspect ratio. Enter both dimensions for this resize.", true);
+    setStatus("Chute could not read the original aspect ratio. Enter both dimensions for this resize.", true);
     return;
   }
 
@@ -129,11 +129,11 @@ async function rootWithReadPermission() {
 
 async function resizedDirectoryForRow(row) {
   const root = await rootWithReadPermission();
-  if (!root) throw new Error("FileChute needs access to the remembered root folder.");
+  if (!root) throw new Error("Chute needs access to the remembered root folder.");
 
   let parts = rowPath(row).split("/").map((part) => part.trim()).filter(Boolean);
   if (parts[0]?.toLowerCase() === String(root.name || "").toLowerCase()) parts = parts.slice(1);
-  if (!parts.length) throw new Error("FileChute could not resolve this image location.");
+  if (!parts.length) throw new Error("Chute could not resolve this image location.");
   parts.pop(); // filename
 
   let directory = root;
@@ -172,7 +172,7 @@ async function openResizedLocation(row) {
 
   // Do not invoke a system Open/Cancel file picker. A browser extension cannot
   // directly launch Dolphin without a native helper, so the dependency-free
-  // behavior is to navigate straight to the resolved folder inside FileChute.
+  // behavior is to navigate straight to the resolved folder inside Chute.
   const visible = visibleResizedDirectoryRow();
   const name = visible?.querySelector(".entry-name");
   if (name instanceof HTMLElement) {
@@ -181,7 +181,7 @@ async function openResizedLocation(row) {
     return;
   }
 
-  // Use FileChute's existing typed-location navigation without location.reload().
+  // Use Chute's existing typed-location navigation without location.reload().
   const locationInput = document.querySelector(".filechute-location");
   const go = document.querySelector(".filechute-location-go");
   if (locationInput instanceof HTMLInputElement && go instanceof HTMLButtonElement) {
@@ -202,7 +202,7 @@ function interceptResizedFolderButton(event) {
   event.preventDefault();
   event.stopImmediatePropagation();
   void openResizedLocation(row).catch((error) => {
-    console.error("FileChute could not open resized location", error);
+    console.error("Chute could not open resized location", error);
     setStatus(error?.message || "Could not open the resized location.", true);
   });
 }
@@ -212,14 +212,14 @@ function install() {
   syncResizedButtonVisibility();
 
   const form = document.querySelector("#resize-v3-form");
-  if (form instanceof HTMLFormElement && form.dataset.filechuteSingleDimension !== "true") {
-    form.dataset.filechuteSingleDimension = "true";
+  if (form instanceof HTMLFormElement && form.dataset.chuteSingleDimension !== "true") {
+    form.dataset.chuteSingleDimension = "true";
     form.addEventListener("submit", prepareSingleDimensionSubmit, true);
   }
 
   const aspect = document.querySelector("#resize-v3-aspect");
-  if (aspect instanceof HTMLInputElement && aspect.dataset.filechuteDimensionHints !== "true") {
-    aspect.dataset.filechuteDimensionHints = "true";
+  if (aspect instanceof HTMLInputElement && aspect.dataset.chuteDimensionHints !== "true") {
+    aspect.dataset.chuteDimensionHints = "true";
     aspect.addEventListener("change", updateDimensionHints);
   }
 }

@@ -66,7 +66,7 @@ function hasConcreteFileItems(transfer) {
 
 async function rootWithWritePermission() {
   const root = await readStored(ROOT_HANDLE_KEY);
-  if (!root || root.kind !== "directory") throw new Error("Choose a FileChute folder first.");
+  if (!root || root.kind !== "directory") throw new Error("Choose a Chute folder first.");
 
   try {
     if ((await root.queryPermission({ mode: "readwrite" })) === "granted") return root;
@@ -76,7 +76,7 @@ async function rootWithWritePermission() {
     if ((await root.requestPermission({ mode: "readwrite" })) === "granted") return root;
   } catch {}
 
-  throw new Error(`FileChute needs write access to ${root.name || "the selected folder"}.`);
+  throw new Error(`Chute needs write access to ${root.name || "the selected folder"}.`);
 }
 
 async function resolveDirectory(pathNames) {
@@ -225,11 +225,11 @@ document.addEventListener("drop", (event) => {
       const fileText = `${files} file${files === 1 ? "" : "s"}`;
       const folderText = folders ? ` and ${folders} folder${folders === 1 ? "" : "s"}` : "";
       setStatus(`Copied ${fileText}${folderText} into ${target}.`);
-      window.dispatchEvent(new CustomEvent("filechute:filesystem-changed"));
+      window.dispatchEvent(new CustomEvent("chute:filesystem-changed"));
     })
     .catch((error) => {
-      console.error("FileChute single-destination drop failed", error);
-      setStatus(error?.message || "Could not copy that drop into FileChute.", true);
+      console.error("Chute single-destination drop failed", error);
+      setStatus(error?.message || "Could not copy that drop into Chute.", true);
     })
     .finally(() => {
       dropBusy = false;

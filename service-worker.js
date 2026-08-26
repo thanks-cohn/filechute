@@ -22,7 +22,7 @@ async function configureLaunchBehavior(requestedMode = null) {
     await chrome.sidePanel.setOptions({ path: "sidepanel.html", enabled: true });
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: mode === "panel" });
   } catch (error) {
-    console.warn("FileChute could not configure the browser side panel.", error);
+    console.warn("Chute could not configure the browser side panel.", error);
   }
   return mode;
 }
@@ -131,8 +131,8 @@ async function consumeTransfer(token, relativePath) {
   const stored = await chrome.storage.session.get(key);
   await chrome.storage.session.remove(key).catch(() => {});
   const record = stored?.[key];
-  if (!record) throw new Error("This FileChute drag is no longer available. Drag the item again.");
-  if (String(record.relativePath) !== String(relativePath)) throw new Error("The FileChute drag does not match this file.");
+  if (!record) throw new Error("This Chute drag is no longer available. Drag the item again.");
+  if (String(record.relativePath) !== String(relativePath)) throw new Error("The Chute drag does not match this file.");
   return record;
 }
 
@@ -146,9 +146,9 @@ async function gallerySourceRecord(token, directoryPath) {
     record = session?.[transferKey(token)] || null;
   }
 
-  if (!record) throw new Error("This FileChute gallery source is not registered. Drag the folder into FrameChute again.");
-  if (String(record.relativePath) !== String(directoryPath)) throw new Error("This gallery source does not match that FileChute folder.");
-  if (record.kind && record.kind !== "directory") throw new Error("This FileChute source is not a directory.");
+  if (!record) throw new Error("This Chute gallery source is not registered. Drag the folder into FrameChute again.");
+  if (String(record.relativePath) !== String(directoryPath)) throw new Error("This gallery source does not match that Chute folder.");
+  if (record.kind && record.kind !== "directory") throw new Error("This Chute source is not a directory.");
   return record;
 }
 
@@ -163,9 +163,9 @@ async function hasReadPermission(handle) {
 
 async function rootDirectory() {
   const root = await readStored(ROOT_HANDLE_KEY);
-  if (!root || root.kind !== "directory") throw new Error("FileChute no longer has a selected root folder.");
+  if (!root || root.kind !== "directory") throw new Error("Chute no longer has a selected root folder.");
   if (!(await hasReadPermission(root))) {
-    throw new Error(`Reconnect ${root.name || "the FileChute folder"} in FileChute, then try again.`);
+    throw new Error(`Reconnect ${root.name || "the Chute folder"} in Chute, then try again.`);
   }
   return root;
 }
@@ -187,7 +187,7 @@ async function directoryForRelativePath(relativePath) {
 async function fileForRelativePath(relativePath) {
   const root = await rootDirectory();
   const segments = pathSegments(relativePath, root);
-  if (!segments.length) throw new Error("That FileChute item does not resolve to a file.");
+  if (!segments.length) throw new Error("That Chute item does not resolve to a file.");
 
   let directory = root;
   for (const segment of segments.slice(0, -1)) directory = await directory.getDirectoryHandle(segment);
@@ -345,7 +345,7 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
 
 // In the default panel mode Chrome owns the action click and toggles the
 // persistent browser side panel. This listener only does work when the user
-// explicitly selects the legacy floating-window mode in FileChute settings.
+// explicitly selects the legacy floating-window mode in Chute settings.
 chrome.action.onClicked.addListener((tab) => {
   void (async () => {
     if ((await fileChuteLaunchMode()) !== "window") return;

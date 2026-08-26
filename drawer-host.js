@@ -85,14 +85,14 @@
   const frame = document.createElement("iframe");
   frame.className = "filechute-panel";
   frame.src = chrome.runtime.getURL("sidepanel.html");
-  frame.title = "FileChute";
+  frame.title = "Chute";
   frame.setAttribute("allow", "clipboard-write");
 
   const close = document.createElement("button");
   close.className = "filechute-close";
   close.type = "button";
-  close.title = "Close FileChute";
-  close.setAttribute("aria-label", "Close FileChute");
+  close.title = "Close Chute";
+  close.setAttribute("aria-label", "Close Chute");
   close.textContent = "‹";
 
   const toast = document.createElement("div");
@@ -132,7 +132,7 @@
     const binary = atob(String(response?.base64 || ""));
     const bytes = new Uint8Array(binary.length);
     for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-    return new File([bytes], response?.name || "FileChute file", {
+    return new File([bytes], response?.name || "Chute file", {
       type: response?.type || "application/octet-stream",
       lastModified: Number(response?.lastModified) || Date.now()
     });
@@ -229,8 +229,8 @@
   }
 
   async function handFileToPage(payload, originalEvent) {
-    if (payload.kind === "directory") throw new Error("Web pages cannot receive FileChute directories through a normal file upload yet.");
-    if (!payload.transferToken || !payload.relativePath) throw new Error("Reload FileChute and drag the item again.");
+    if (payload.kind === "directory") throw new Error("Web pages cannot receive Chute directories through a normal file upload yet.");
+    if (!payload.transferToken || !payload.relativePath) throw new Error("Reload Chute and drag the item again.");
 
     const response = await chrome.runtime.sendMessage({
       type: "filechute-read-dragged-file-v1",
@@ -239,7 +239,7 @@
       representation: payload.representation || "original",
       mime: payload.mime || ""
     });
-    if (!response?.ok) throw new Error(response?.error || "FileChute could not read that file.");
+    if (!response?.ok) throw new Error(response?.error || "Chute could not read that file.");
 
     const file = base64File(response);
     const target = originalEvent.target;
@@ -283,7 +283,7 @@
     event.preventDefault();
     event.stopImmediatePropagation();
     void handFileToPage(payload, event).catch((error) => {
-      console.error("FileChute → webpage handoff failed", error);
+      console.error("Chute → webpage handoff failed", error);
       showToast(error?.message || "Could not send that file to this page.", true);
     });
   }, true);

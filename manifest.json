@@ -1,23 +1,27 @@
 {
   "manifest_version": 3,
-  "name": "FileChute",
-  "short_name": "FileChute",
-  "version": "0.1.34",
-  "description": "Browse user-selected local files from a persistent browser side panel and drag the originals where you need them.",
+  "name": "Chute",
+  "short_name": "Chute",
+  "version": "0.2.0",
+  "description": "A local-first browser shelf for one folder, with Chutty on supported image surfaces.",
   "homepage_url": "https://github.com/thanks-cohn/filechute",
   "icons": {
     "16": "assets/icon16.png",
     "48": "assets/icon48.png",
     "128": "assets/icon128.png"
   },
-  "permissions": ["storage", "activeTab", "scripting", "sidePanel"],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "sidePanel"
+  ],
   "optional_host_permissions": [
-    "http://127.0.0.1:17891/*",
-    "http://*/*",
-    "https://*/*"
+    "https://*/*",
+    "http://*/*"
   ],
   "action": {
-    "default_title": "Toggle FileChute",
+    "default_title": "Open Chute",
     "default_icon": {
       "16": "assets/icon16.png",
       "48": "assets/icon48.png",
@@ -33,20 +37,39 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
-      "js": ["chatgpt-image-drag-source.js"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "chatgpt-image-drag-source.js",
+        "chutty-host.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     },
     {
-      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
-      "js": ["page-drop-bridge.js", "page-resource-export.js"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "page-drop-bridge.js",
+        "page-resource-export.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     },
     {
-      "matches": ["https://*.google.com/*"],
-      "js": ["google-image-drag-source.js", "page-drop-bridge.js", "page-resource-export.js"],
+      "matches": [
+        "https://*.google.com/*"
+      ],
+      "js": [
+        "google-image-drag-source.js",
+        "page-drop-bridge.js",
+        "page-resource-export.js",
+        "chutty-host.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     },
@@ -59,7 +82,12 @@
         "https://*.yandex.uz/*",
         "https://*.yandex.com.tr/*"
       ],
-      "js": ["yandex-image-drag-source.js", "page-drop-bridge.js", "page-resource-export.js"],
+      "js": [
+        "yandex-image-drag-source.js",
+        "page-drop-bridge.js",
+        "page-resource-export.js",
+        "chutty-host.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     }
@@ -84,12 +112,22 @@
         "yandex-image-drop-fallback.js",
         "directory-drag.js",
         "settings-draft.js",
-        "durable-storage-settings.js",
+        "chutty-settings.js",
+        "chutty-config.js",
+        "animations/catalog.js",
+        "animations/assets/idle/animation.js",
+        "animations/assets/happy/animation.js",
+        "animations/assets/curious/animation.js",
+        "animations/assets/hop/animation.js",
+        "animations/assets/chomp/animation.js",
+        "animations/assets/ready/animation.js",
+        "animations/assets/eating/animation.js",
+        "animations/assets/success/animation.js",
+        "animations/assets/failure/animation.js",
         "image-resize.js",
         "image-resize-v2.js",
         "image-resize-v3.js",
         "resize-usability-patch.js",
-        "chute-drop-compat.js",
         "receive-drops.js",
         "folder-picker.js",
         "first-run.js",
@@ -98,7 +136,9 @@
         "metadata-store.js",
         "thumbnail-store.js"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

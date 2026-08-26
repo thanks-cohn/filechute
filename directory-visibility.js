@@ -108,7 +108,7 @@ style.textContent = `
     order: 100000 !important;
   }
 
-  /* The default mixed mode deliberately leaves FileChute's existing file
+  /* The default mixed mode deliberately leaves Chute's existing file
      ordering untouched. Priority modes only group the currently visible page. */
   #entries[data-filechute-media-priority="images"] > .entry[data-filechute-media-kind="image"] {
     order: -50000;
