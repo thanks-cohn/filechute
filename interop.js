@@ -2,6 +2,7 @@ import { writeStored } from "./storage.js";
 
 export const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
 export const FILECHUTE_VERSION = 1;
+export const FILECHUTE_TEXT_PREFIX = "filechute-transfer-v1:";
 
 const TRANSFER_FILE_CACHE_KEY = "filechute-transfer-file-cache-v1";
 
@@ -37,15 +38,6 @@ export function makeFileChutePayload({
   };
 }
 
-function validWebUrl(value) {
-  try {
-    const url = new URL(String(value || ""));
-    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
-  } catch {
-    return null;
-  }
-}
-
 function windowsPlatform() {
   const platform = String(
     globalThis.navigator?.userAgentData?.platform ||
@@ -59,10 +51,6 @@ function windowsPlatform() {
 function cacheTransferFile(payload, file) {
   if (!(file instanceof File) || !payload?.transferToken) return;
 
-  // Keep exactly one most-recent transfer file. The receiving page can fetch
-  // these bytes through FileChute's bridge instead of asking Windows Chromium
-  // to synthesize an OS-native file drag. A single slot avoids abandoned drag
-  // attempts accumulating permanent temporary files in IndexedDB.
   void writeStored(TRANSFER_FILE_CACHE_KEY, {
     token: String(payload.transferToken),
     file,
@@ -72,18 +60,34 @@ function cacheTransferFile(payload, file) {
   });
 }
 
+function textEnvelope(payload) {
+  try {
+    return `${FILECHUTE_TEXT_PREFIX}${encodeURIComponent(JSON.stringify(payload))}`;
+  } catch {
+    return "";
+  }
+}
+
+function payloadFromText(value) {
+  const text = String(value || "");
+  if (!text.startsWith(FILECHUTE_TEXT_PREFIX)) return null;
+  try {
+    const payload = JSON.parse(decodeURIComponent(text.slice(FILECHUTE_TEXT_PREFIX.length)));
+    if (payload?.protocol !== "filechute-item" || payload.version !== FILECHUTE_VERSION) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 export function writeFileChuteDrag(transfer, payload, file = null) {
   transfer.effectAllowed = "copy";
-
   cacheTransferFile(payload, file);
 
-  // Chromium has a long-standing bug where DataTransferItemList.add(File) can
-  // appear to succeed while no usable File reaches the drop target. On Windows
-  // repeated synthetic file drags can also leave Chromium's drag state wedged.
-  // Carry only FileChute's token there; the receiver retrieves the bytes.
   const onWindows = windowsPlatform();
   const useNativeFileItem = Boolean(file) && !onWindows;
   let fileAdded = false;
+
   if (useNativeFileItem) {
     try {
       const before = transfer.items.length;
@@ -92,7 +96,22 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
     } catch {}
   }
 
-  transfer.setData(FILECHUTE_DRAG_TYPE, JSON.stringify(payload));
+  // Keep the private MIME flavor for same-renderer / browsers that preserve it.
+  try {
+    transfer.setData(FILECHUTE_DRAG_TYPE, JSON.stringify(payload));
+  } catch {}
+
+  // Chromium is not reliable about preserving custom drag flavors when a drag
+  // leaves an extension side panel for another renderer. Whenever there is no
+  // trustworthy native File item, carry the same payload inside text/plain.
+  // Receivers recognize this prefix in capture phase and consume it before the
+  // target website sees it as text.
+  if (!fileAdded) {
+    const envelope = textEnvelope(payload);
+    if (envelope) {
+      try { transfer.setData("text/plain", envelope); } catch {}
+    }
+  }
 
   if (payload?.transferToken && payload?.relativePath && globalThis.chrome?.runtime?.sendMessage) {
     globalThis.chrome.runtime.sendMessage({
@@ -104,36 +123,19 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
       name: payload.originalName || payload.name || ""
     }).catch(() => {});
   }
-
-  if (!fileAdded) {
-    // Windows browser-to-browser transfers are deliberately token-only. Do not
-    // add text/plain or text/uri-list for a real file: Chromium will otherwise
-    // let the destination consume the filename/URL as text before FileChute's
-    // bridge can reconstruct the actual File from the transfer token.
-    if (file && onWindows) return;
-
-    // Directories are also private-protocol transfers. Advertising a folder
-    // path as text makes Chromium start a text drag and can prevent FrameChute
-    // from seeing the gallery token at all.
-    if (payload?.kind === "directory") return;
-
-    const sourceUrl = validWebUrl(payload?.sourceUrl);
-    if (sourceUrl) {
-      try { transfer.setData("text/uri-list", sourceUrl); } catch {}
-      try { transfer.setData("text/plain", sourceUrl); } catch {}
-    } else if (!file && payload?.relativePath) {
-      try { transfer.setData("text/plain", payload.relativePath); } catch {}
-    }
-  }
 }
 
 export function readFileChuteDrag(transfer) {
   try {
-    const raw = transfer.getData(FILECHUTE_DRAG_TYPE);
-    if (!raw) return null;
-    const payload = JSON.parse(raw);
-    if (payload?.protocol !== "filechute-item" || payload.version !== FILECHUTE_VERSION) return null;
-    return payload;
+    const raw = transfer?.getData(FILECHUTE_DRAG_TYPE);
+    if (raw) {
+      const payload = JSON.parse(raw);
+      if (payload?.protocol === "filechute-item" && payload.version === FILECHUTE_VERSION) return payload;
+    }
+  } catch {}
+
+  try {
+    return payloadFromText(transfer?.getData("text/plain"));
   } catch {
     return null;
   }
