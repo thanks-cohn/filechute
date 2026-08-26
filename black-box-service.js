@@ -2,6 +2,7 @@ const BLACK_BOX_KEY = "filechute-black-box-v1";
 const BLACK_BOX_MAX_EVENTS = 6000;
 
 let writeChain = Promise.resolve();
+const workerSessionId = crypto.randomUUID();
 
 function cleanEvent(value) {
   if (!value || typeof value !== "object") return null;
@@ -103,6 +104,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         exportedAt: new Date().toISOString(),
         extensionId: chrome.runtime.id,
         manifest: chrome.runtime.getManifest(),
+        workerSessionId,
+        raw: box,
+        analysis: globalThis.FileChuteBlackBoxAnalyzer.analyze(box.events),
         ...box
       }))
       .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
@@ -123,4 +127,16 @@ chrome.runtime.onMessageExternal.addListener((message, sender) => {
   if (!observedTransferMessages.has(message?.type)) return false;
   serviceRecord("service-external-message-received", message, sender, { external: true });
   return false;
+});
+
+
+void appendEvent({
+  at: new Date().toISOString(),
+  sessionId: workerSessionId,
+  source: "filechute-service-worker",
+  component: "filechute-service-worker",
+  checkpoint: "worker-context-loaded",
+  result: "ok",
+  handler: "black-box-service.js",
+  manifestVersion: chrome.runtime.getManifest().version
 });
