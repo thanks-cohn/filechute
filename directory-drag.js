@@ -25,7 +25,7 @@ function hasChutePayload(transfer) {
 function prepareDirectoryRows(root = document) {
   for (const row of root.querySelectorAll?.(".entry.directory") || []) {
     row.hidden = false;
-    row.dataset.chuteDirectory = "true";
+    row.dataset.filechuteDirectory = "true";
     row.draggable = true;
 
     const grip = row.querySelector(".filechute-grip");
