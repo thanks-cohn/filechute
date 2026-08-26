@@ -1,17 +1,21 @@
 (() => {
   const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
-  const FILECHUTE_TEXT_PREFIX = "filechute-transfer-v1:";
+  const FILECHUTE_TEXT_PREFIX = "FILECHUTE1|";
 
   function looksLikeTransport(transfer) {
     try {
       const types = [...(transfer?.types || [])];
-      return types.includes("text/plain") && (transfer.effectAllowed === "copy" || transfer.effectAllowed === "all" || transfer.effectAllowed === "uninitialized");
+      return types.includes("text/plain") && (
+        transfer.effectAllowed === "copy" ||
+        transfer.effectAllowed === "all" ||
+        transfer.effectAllowed === "uninitialized"
+      );
     } catch {
       return false;
     }
   }
 
-  function parseEnvelope(transfer) {
+  function parseTicket(transfer) {
     let text = "";
     try {
       text = String(transfer?.getData("text/plain") || "");
@@ -20,10 +24,30 @@
     }
     if (!text.startsWith(FILECHUTE_TEXT_PREFIX)) return null;
 
+    const parts = text.slice(FILECHUTE_TEXT_PREFIX.length).split("|");
+    if (parts.length < 5) return null;
+    const [sourceExtensionId, transferToken, kindCode, encodedPath, ...nameParts] = parts;
+    if (!sourceExtensionId || !transferToken) return null;
+
     try {
-      const payload = JSON.parse(decodeURIComponent(text.slice(FILECHUTE_TEXT_PREFIX.length)));
-      if (payload?.protocol !== "filechute-item" || payload?.version !== 1) return null;
-      return payload;
+      const relativePath = decodeURIComponent(encodedPath || "");
+      const originalName = decodeURIComponent(nameParts.join("|") || "");
+      return {
+        protocol: "filechute-item",
+        version: 1,
+        kind: kindCode === "d" ? "directory" : "file",
+        name: originalName,
+        originalName,
+        representation: "original",
+        mime: kindCode === "d" ? "inode/directory" : "",
+        relativePath,
+        sourceUrl: null,
+        parentPageUrl: null,
+        size: null,
+        lastModified: null,
+        sourceExtensionId,
+        transferToken
+      };
     } catch {
       return null;
     }
@@ -32,19 +56,18 @@
   document.addEventListener("dragover", (event) => {
     if (!looksLikeTransport(event.dataTransfer)) return;
 
-    // Chromium may strip FileChute's custom MIME type when the drag crosses
-    // from an extension side panel into another renderer. text/plain survives,
-    // so keep the destination drop-eligible until we can inspect the envelope
-    // at the actual drop event.
+    // The ticket is intentionally standard text so it survives the renderer
+    // boundary. Keep the page drop-eligible; we verify the FileChute prefix at
+    // drop time before consuming anything.
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
   }, true);
 
   document.addEventListener("drop", (event) => {
-    const payload = parseEnvelope(event.dataTransfer);
+    const payload = parseTicket(event.dataTransfer);
     if (!payload) return;
 
-    // Do not let the target website insert the transport envelope as text.
+    // Do not let the website insert the transport ticket as ordinary text.
     event.preventDefault();
     event.stopImmediatePropagation();
 
