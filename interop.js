@@ -81,7 +81,8 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
   // appear to succeed while no usable File reaches the drop target. On Windows
   // repeated synthetic file drags can also leave Chromium's drag state wedged.
   // Carry only FileChute's token there; the page bridge retrieves the bytes.
-  const useNativeFileItem = Boolean(file) && !windowsPlatform();
+  const onWindows = windowsPlatform();
+  const useNativeFileItem = Boolean(file) && !onWindows;
   let fileAdded = false;
   if (useNativeFileItem) {
     try {
@@ -105,13 +106,11 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
   }
 
   if (!fileAdded) {
-    // On Windows do not turn a failed file drag into a provenance-URL drag.
-    // A compatible receiving page will consume FILECHUTE_DRAG_TYPE; an
-    // incompatible page merely sees the harmless FileChute relative path.
-    if (file && windowsPlatform() && payload?.relativePath) {
-      try { transfer.setData("text/plain", payload.relativePath); } catch {}
-      return;
-    }
+    // Windows browser-to-browser transfers are deliberately token-only. Do not
+    // add text/plain or text/uri-list for a real file: Chromium will otherwise
+    // let the destination consume the filename/URL as text before FileChute's
+    // page bridge can reconstruct the actual File from the transfer token.
+    if (file && onWindows) return;
 
     const sourceUrl = validWebUrl(payload?.sourceUrl);
     if (sourceUrl) {
