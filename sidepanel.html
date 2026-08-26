@@ -74,12 +74,44 @@
       </section>
 
       <section class="settings-section">
-        <h3>Chutty support</h3>
-        <label class="setting-stack" for="chutty-support-url">
-          <span>Donation / support URL</span>
-          <input id="chutty-support-url" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://…">
-          <small>Optional. Clicking Chutty reveals the support button. Leave this blank to keep the button visible but disabled until you choose a destination.</small>
-        </label>
+        <h3>Chutty</h3>
+        <div class="chutty-settings-grid">
+          <label class="setting-row checkbox-row">
+            <span>Show Chutty</span>
+            <input id="chutty-visible" type="checkbox" checked>
+          </label>
+
+          <label class="setting-stack" for="chutty-position">
+            <span>Screen position</span>
+            <select id="chutty-position">
+              <option value="right" selected>Bottom right</option>
+              <option value="left">Bottom left</option>
+            </select>
+          </label>
+
+          <label class="setting-row checkbox-row">
+            <span>Open Chutty's menu on hover</span>
+            <input id="chutty-hover-menu" type="checkbox" checked>
+          </label>
+
+          <label class="setting-row checkbox-row">
+            <span>Click Chutty to cycle animations</span>
+            <input id="chutty-click-cycle" type="checkbox" checked>
+          </label>
+
+          <label class="setting-row checkbox-row">
+            <span>Reveal Support Chutty while playing</span>
+            <input id="chutty-support-visible" type="checkbox" checked>
+          </label>
+        </div>
+
+        <p class="settings-note">The Support Chutty button uses Chute's official support link. The destination is built into the extension and cannot be changed from user settings.</p>
+
+        <div class="setting-stack">
+          <span>Click animation order</span>
+          <small>Turn normal click animations on or off and move them into the order you want. Drop lifecycle animations such as Ready, Eating, Success, and Failure are automatic.</small>
+          <div id="chutty-animation-list" class="chutty-animation-list" aria-label="Chutty animation order"></div>
+        </div>
       </section>
 
       <section class="settings-section">
@@ -194,10 +226,10 @@
   <script type="module" src="directory-visibility.js"></script>
   <script type="module" src="receive-drops.js"></script>
   <script type="module" src="folder-picker.js"></script>
-  <script type="module" src="support-settings.js"></script>
   <script type="module" src="sidepanel.js"></script>
   <script type="module" src="shelf-live-refresh.js"></script>
   <script type="module" src="directory-drag.js"></script>
+  <script type="module" src="chutty-settings.js"></script>
   <script type="module" src="settings-draft.js"></script>
   <script type="module" src="first-run.js"></script>
 </body>
