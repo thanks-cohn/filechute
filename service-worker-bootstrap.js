@@ -27,7 +27,7 @@ async function injectOpenSupportedTabs({ force = false } = {}) {
     .filter((tab) => Number.isInteger(tab?.id))
     .map((tab) => chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ["page-drop-bridge.js"]
+      files: ["page-drop-bridge.js", "page-drop-text-envelope.js"]
     })));
 }
 
@@ -40,7 +40,7 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 // An unpacked extension reload invalidates the content-script contexts in tabs
-// that were already open. Re-seed FileChute's handoff bridge into those tabs
+// that were already open. Re-seed FileChute's handoff bridges into those tabs
 // as soon as the new service-worker context starts, without requiring a manual
 // page refresh.
 void injectOpenSupportedTabs();
