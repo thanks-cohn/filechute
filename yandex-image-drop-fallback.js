@@ -4,8 +4,8 @@ import { mergeMetadata } from "./metadata-store.js";
 const ROOT_HANDLE_KEY = "filechute-root-handle";
 const YANDEX_DRAG_KEY = "filechute-yandex-drag-source-v1";
 const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
-const CHUTE_DRAG_TYPE = "application/x-filechute-item";
-const FRAMECHUTE_DRAG_TYPE = "application/x-framefilechute-item+json";
+const CHUTE_DRAG_TYPE = "application/x-chute-item";
+const FRAMECHUTE_DRAG_TYPE = "application/x-framechute-item+json";
 const MAX_AGE_MS = 12000;
 
 const statusElement = document.querySelector("#status");
