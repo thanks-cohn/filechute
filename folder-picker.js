@@ -42,7 +42,13 @@ chooseRootButton?.addEventListener("click", (event) => {
       if (!handle) return;
       await writeStored(ROOT_HANDLE_KEY, handle);
       setStatus(`Opening ${handle.name}…`);
-      location.reload();
+
+      // Keep the directory grant in the current document. Some Chromium/Windows
+      // combinations return a freshly granted handle to "prompt" after a forced
+      // side-panel reload, which trapped FileChute in a reconnect loop.
+      window.dispatchEvent(new CustomEvent("filechute:root-handle-ready", {
+        detail: { handle }
+      }));
     } catch (error) {
       if (error?.name === "AbortError") return;
       console.error("FileChute folder picker failed", error);
