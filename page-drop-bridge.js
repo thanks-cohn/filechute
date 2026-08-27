@@ -1,22 +1,39 @@
 (() => {
-  const MARKER = "__filechute_page_drop_bridge_v1__";
+  const MARKER = "__filechute_page_drop_bridge_v2__";
   const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
-  const GENERATION = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  globalThis[MARKER] = GENERATION;
+  const FILECHUTE_DRAG_PREFIX = "FILECHUTE1|";
+  const ARM_TIMEOUT_MS = 15000;
+
+  if (globalThis[MARKER]) return;
+  globalThis[MARKER] = true;
+
+  let armedPayload = null;
+  let armedTimer = null;
+  let delivering = false;
 
   function extensionContextAvailable() {
-    try {
-      return Boolean(globalThis.chrome?.runtime?.id);
-    } catch {
-      return false;
-    }
+    try { return Boolean(globalThis.chrome?.runtime?.id); } catch { return false; }
   }
 
-  function activeBridge() {
-    return globalThis[MARKER] === GENERATION && extensionContextAvailable();
+  function clearArmed() {
+    armedPayload = null;
+    if (armedTimer) clearTimeout(armedTimer);
+    armedTimer = null;
   }
 
-  function parsePayload(transfer) {
+  function arm(payload) {
+    if (!payload?.transferToken || !payload?.relativePath) return;
+    armedPayload = { ...payload };
+    if (armedTimer) clearTimeout(armedTimer);
+    armedTimer = setTimeout(clearArmed, ARM_TIMEOUT_MS);
+  }
+
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message?.type === "filechute-drag-out-start-v1") arm(message.payload);
+    if (message?.type === "filechute-drag-out-end-v1") clearArmed();
+  });
+
+  function parsePrivatePayload(transfer) {
     try {
       const raw = transfer?.getData(FILECHUTE_DRAG_TYPE);
       if (!raw) return null;
@@ -28,18 +45,47 @@
     }
   }
 
+  function decodeTicket(value) {
+    const text = String(value || "");
+    if (!text.startsWith(FILECHUTE_DRAG_PREFIX)) return null;
+    const parts = text.slice(FILECHUTE_DRAG_PREFIX.length).split("|");
+    if (parts.length < 5) return null;
+    try {
+      const [sourceExtensionId, transferToken, kind, relativePath, originalName] = parts.map(decodeURIComponent);
+      if (!transferToken || !relativePath) return null;
+      return {
+        protocol: "filechute-item",
+        version: 1,
+        sourceExtensionId,
+        transferToken,
+        kind: kind || "file",
+        relativePath,
+        representation: "original",
+        name: originalName || relativePath.split("/").at(-1) || "FileChute file",
+        originalName: originalName || relativePath.split("/").at(-1) || "FileChute file"
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function parseTicketPayload(transfer) {
+    try { return decodeTicket(transfer?.getData("text/plain")); } catch { return null; }
+  }
+
+  function payloadForDrop(transfer) {
+    return parsePrivatePayload(transfer) || parseTicketPayload(transfer) || armedPayload;
+  }
+
   function nativeFiles(transfer) {
     const files = [];
     if (!transfer) return files;
-
     try {
       for (const file of [...(transfer.files || [])]) {
-        if (file instanceof File && file.size >= 0) files.push(file);
+        if (file instanceof File) files.push(file);
       }
     } catch {}
-
     if (files.length) return files;
-
     try {
       for (const item of [...(transfer.items || [])]) {
         if (item?.kind !== "file") continue;
@@ -47,7 +93,6 @@
         if (file instanceof File) files.push(file);
       }
     } catch {}
-
     return files;
   }
 
@@ -92,7 +137,7 @@
     toast.style.border = error ? "1px solid rgba(224,93,68,.65)" : "1px solid rgba(255,255,255,.14)";
     toast.style.opacity = "1";
     clearTimeout(globalThis.__filechutePageDropToastTimer);
-    globalThis.__filechutePageDropToastTimer = setTimeout(() => { toast.style.opacity = "0"; }, 2600);
+    globalThis.__filechutePageDropToastTimer = setTimeout(() => { toast.style.opacity = "0"; }, 2200);
   }
 
   function inputAccepts(input, file) {
@@ -108,9 +153,9 @@
   }
 
   function visible(element) {
-    if (!(element instanceof Element)) return false;
+    if (!(element instanceof Element) || !element.isConnected) return false;
     const style = getComputedStyle(element);
-    return style.display !== "none" && style.visibility !== "hidden";
+    return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
   }
 
   function collectInputs(root, result) {
@@ -126,24 +171,20 @@
   function candidateInputs(target) {
     const local = [];
     const global = [];
-    const addLocal = (input) => {
+    const add = (input) => {
       if (input instanceof HTMLInputElement && input.type === "file" && !input.disabled && !local.includes(input)) local.push(input);
     };
 
-    if (target instanceof HTMLInputElement) addLocal(target);
+    if (target instanceof HTMLInputElement) add(target);
     if (target instanceof Element) {
-      addLocal(target.closest("label")?.querySelector('input[type="file"]'));
-      target.closest("form")?.querySelectorAll('input[type="file"]').forEach(addLocal);
+      add(target.closest("label")?.querySelector('input[type="file"]'));
+      target.closest("form")?.querySelectorAll('input[type="file"]').forEach(add);
       let parent = target;
       for (let depth = 0; parent && depth < 7; depth += 1, parent = parent.parentElement) {
-        parent.querySelectorAll?.('input[type="file"]').forEach(addLocal);
+        parent.querySelectorAll?.('input[type="file"]').forEach(add);
       }
     }
 
-    // Keep inputs nearest the physical drop target ahead of unrelated visible
-    // inputs elsewhere on the page. Yandex and Google can keep several hidden
-    // file inputs around at once; sorting every input only by visibility could
-    // hand the image to the wrong control and make it briefly appear then vanish.
     collectInputs(document, global);
     const remaining = global.filter((input) => !local.includes(input));
     local.sort((a, b) => Number(visible(b)) - Number(visible(a)));
@@ -159,34 +200,31 @@
       input.files = transfer.files;
       input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
       input.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-      return input.files?.length === 1;
+      return Boolean(input.files?.length);
     } catch {
       return false;
     }
   }
 
-  function dragInit(file, originalEvent) {
-    const transfer = new DataTransfer();
-    transfer.effectAllowed = "copy";
-    transfer.items.add(file);
-    return {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      dataTransfer: transfer,
-      clientX: originalEvent.clientX,
-      clientY: originalEvent.clientY,
-      screenX: originalEvent.screenX,
-      screenY: originalEvent.screenY
-    };
-  }
-
   function dispatchDrop(target, file, originalEvent) {
     if (!(target instanceof EventTarget)) return false;
     try {
-      target.dispatchEvent(new DragEvent("dragenter", dragInit(file, originalEvent)));
-      target.dispatchEvent(new DragEvent("dragover", dragInit(file, originalEvent)));
-      target.dispatchEvent(new DragEvent("drop", dragInit(file, originalEvent)));
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      transfer.effectAllowed = "copy";
+      const options = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        dataTransfer: transfer,
+        clientX: originalEvent.clientX,
+        clientY: originalEvent.clientY,
+        screenX: originalEvent.screenX,
+        screenY: originalEvent.screenY
+      };
+      target.dispatchEvent(new DragEvent("dragenter", options));
+      target.dispatchEvent(new DragEvent("dragover", options));
+      target.dispatchEvent(new DragEvent("drop", options));
       return true;
     } catch {
       return false;
@@ -213,13 +251,11 @@
   }
 
   async function readDraggedFile(payload) {
-    const delays = [0, 40, 100, 220, 420];
+    const delays = [0, 35, 90, 180, 350];
     let lastError = null;
-
-    for (let attempt = 0; attempt < delays.length; attempt += 1) {
-      if (delays[attempt]) await wait(delays[attempt]);
-      if (!activeBridge()) throw new Error("FileChute reloaded while this page was open. Try the drop again.");
-
+    for (const delay of delays) {
+      if (delay) await wait(delay);
+      if (!extensionContextAvailable()) throw new Error("FileChute reloaded while this page was open. Try again.");
       try {
         const response = await chrome.runtime.sendMessage({
           type: "filechute-read-dragged-file-v1",
@@ -228,77 +264,92 @@
           representation: payload.representation || "original",
           mime: payload.mime || ""
         });
-
         if (response?.ok) return response;
         const message = response?.error || "FileChute could not read that file.";
         lastError = new Error(message);
-        if (!/drag is no longer available|not registered|no longer available/i.test(message)) throw lastError;
+        if (!/no longer available|not registered/i.test(message)) throw lastError;
       } catch (error) {
         lastError = error;
-        if (/extension context invalidated/i.test(String(error?.message || error))) {
-          throw new Error("FileChute reloaded while this page was open. Try the drop again.");
-        }
-        if (!/drag is no longer available|not registered|no longer available/i.test(String(error?.message || error))) throw error;
+        if (!/no longer available|not registered/i.test(String(error?.message || error))) throw error;
       }
     }
-
     throw lastError || new Error("FileChute could not read that file.");
   }
 
   async function receive(payload, event) {
-    if (payload.kind === "directory") throw new Error("This website upload target accepts files, not a FileChute directory.");
-    if (!payload.transferToken || !payload.relativePath) throw new Error("Reload FileChute and drag this item again.");
+    if (delivering) return;
+    if (payload.kind === "directory") throw new Error("This website target accepts files, not a FileChute directory.");
+    if (!payload.transferToken || !payload.relativePath) throw new Error("Drag the FileChute item again.");
 
-    const response = await readDraggedFile(payload);
-    const file = base64File(response);
-    const inputs = candidateInputs(event.target).filter((candidate) => inputAccepts(candidate, file));
-    const input = inputs[0];
+    delivering = true;
+    try {
+      const response = await readDraggedFile(payload);
+      const file = base64File(response);
+      const input = candidateInputs(event.target).find((candidate) => inputAccepts(candidate, file));
 
-    if (input && assignFile(input, file)) {
-      clearPageDropState(event.target, event);
-      showToast(`Sent ${file.name} to this page.`);
-      return;
+      if (input && assignFile(input, file)) {
+        clearPageDropState(event.target, event);
+        showToast(`Sent ${file.name}`);
+        return;
+      }
+
+      // Chute's proven generic fallback: one reconstructed File, one synthetic
+      // drop on the user's physical target. No recursive receiver and no second
+      // compatibility shim is allowed to manufacture another drop.
+      if (dispatchDrop(event.target, file, event)) {
+        clearPageDropState(event.target, event);
+        showToast(`Sent ${file.name}`);
+        return;
+      }
+
+      throw new Error("This page does not expose a compatible file drop target.");
+    } finally {
+      clearArmed();
+      delivering = false;
     }
-
-    if (dispatchDrop(event.target, file, event)) {
-      clearPageDropState(event.target, event);
-      showToast(`Passed ${file.name} to this drop target.`);
-      return;
-    }
-
-    clearPageDropState(event.target, event);
-    throw new Error("This page does not expose a compatible file upload target.");
   }
 
   document.addEventListener("dragover", (event) => {
-    if (!activeBridge()) return;
+    if (!extensionContextAvailable() || delivering) return;
     const types = [...(event.dataTransfer?.types || [])];
-    if (!types.includes(FILECHUTE_DRAG_TYPE)) return;
+    const privateType = types.includes(FILECHUTE_DRAG_TYPE);
+    if (!armedPayload && !privateType) return;
 
-    // A cross-process Chromium drag can advertise the string "Files" even
-    // when the target page receives an empty FileList. Do not treat that label
-    // as proof that the bytes survived. Keep the page drop-eligible and decide
-    // at the actual drop event whether a usable native File exists.
+    // The real File is still allowed to travel normally. PreventDefault merely
+    // marks the page as a valid drop destination; fallback is decided at drop.
     event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    try { event.dataTransfer.dropEffect = "copy"; } catch {}
   }, true);
 
   document.addEventListener("drop", (event) => {
-    if (!activeBridge()) return;
-    const payload = parsePayload(event.dataTransfer);
+    if (!extensionContextAvailable() || delivering) return;
+    const payload = payloadForDrop(event.dataTransfer);
     if (!payload) return;
 
-    // Only stand down when the target page really received a File object.
-    // Merely seeing a "Files" type is insufficient; Chrome can leave behind a
-    // phantom Files flavor after several extension-to-page drag sessions.
-    if (hasUsableNativeFile(event.dataTransfer)) return;
+    // When Chromium successfully transported a real File, FileChute disappears
+    // from the path and lets the website receive the user's trusted drop.
+    if (hasUsableNativeFile(event.dataTransfer)) {
+      clearArmed();
+      return;
+    }
 
+    // Chromium lost the File. Claim the trusted gesture before the compact
+    // recovery ticket can be interpreted as ordinary text by an editor/page.
     event.preventDefault();
+    event.stopImmediatePropagation();
 
     void receive(payload, event).catch((error) => {
       clearPageDropState(event.target, event);
+      clearArmed();
       console.error("FileChute website handoff failed", error);
       showToast(error?.message || "Could not send that FileChute file to this page.", true);
     });
   }, true);
+
+  window.addEventListener("blur", () => {
+    if (!armedPayload || delivering) return;
+    setTimeout(() => {
+      if (!delivering) clearArmed();
+    }, 1600);
+  });
 })();
