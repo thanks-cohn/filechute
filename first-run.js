@@ -55,6 +55,36 @@ function showCompatibilityFailure() {
   return true;
 }
 
+async function renderInitialFolderChoice() {
+  if (!entriesElement || showCompatibilityFailure()) return;
+  const root = await readStored(ROOT_HANDLE_KEY);
+  if (root) return;
+  const empty = entriesElement.querySelector(".empty");
+  if (!empty || empty.dataset.filechuteFirstRun === "true") return;
+
+  empty.dataset.filechuteFirstRun = "true";
+  empty.replaceChildren();
+
+  const title = document.createElement("strong");
+  title.textContent = "Choose your FileChute folder";
+
+  const explanation = document.createElement("div");
+  explanation.style.marginTop = "8px";
+  explanation.textContent = "FileChute will remember the folder you approve so normal launches do not keep asking again.";
+
+  const recommendation = document.createElement("div");
+  recommendation.style.marginTop = "8px";
+  recommendation.style.opacity = "0.75";
+  recommendation.textContent = "No preference? Use your Screenshots folder (usually inside Pictures). The picker opens in Pictures when Chromium supports it.";
+
+  empty.append(title, explanation, recommendation);
+  if (chooseRootButton) {
+    chooseRootButton.textContent = "Choose FileChute folder";
+    chooseRootButton.title = "Choose once; FileChute remembers this folder";
+  }
+  setStatus("Choose a folder once. FileChute will remember it.");
+}
+
 async function renderRootReconnect() {
   if (rootReconnectRendering || !entriesElement || showCompatibilityFailure()) return;
   rootReconnectRendering = true;
@@ -159,8 +189,11 @@ thumbnailLocationButton?.addEventListener("click", async (event) => {
 }, true);
 
 if (!showCompatibilityFailure()) {
-  const observer = new MutationObserver(() => void renderRootReconnect());
+  const observer = new MutationObserver(() => {
+    void renderInitialFolderChoice();
+    void renderRootReconnect();
+  });
   if (entriesElement) observer.observe(entriesElement, { childList: true, subtree: true });
-  setTimeout(() => void renderRootReconnect(), 50);
-  setTimeout(() => void renderRootReconnect(), 250);
+  setTimeout(() => { void renderInitialFolderChoice(); void renderRootReconnect(); }, 50);
+  setTimeout(() => { void renderInitialFolderChoice(); void renderRootReconnect(); }, 250);
 }
