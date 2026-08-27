@@ -1,0 +1,22 @@
+name: Extension syntax
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check changed extension JavaScript
+        run: |
+          node --check interop.js
+          node --check page-drop-bridge.js
+          node --check service-worker.js
+          node --check service-worker-bootstrap.js
+          node --check first-run.js
+          node --check image-background-remove.js
+      - name: Validate manifest JSON
+        run: python -m json.tool manifest.json >/dev/null
