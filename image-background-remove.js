@@ -351,7 +351,6 @@ function makeForegroundMask(imageData) {
   const clusters = backgroundClusters(imageData);
   const threshold = 12 + sensitivity * 1.02;
   const soft = Math.max(1, feather * 2.15);
-  const thresholdSq = threshold * threshold;
   const candidate = threshold + Math.max(10, soft * 1.6);
   const candidateSq = candidate * candidate;
   const pixelCount = width * height;
@@ -360,41 +359,33 @@ function makeForegroundMask(imageData) {
   let head = 0;
   let tail = 0;
 
-  const trySeed = (index) => {
-    if (visited[index]) return;
+  const qualifies = (index) => {
     const offset = index * 4;
-    if (data[offset + 3] < 16 || minClusterDistanceSq(data, offset, clusters) <= candidateSq) {
-      visited[index] = 1;
-      queue[tail++] = index;
-    }
+    return data[offset + 3] < 16 || minClusterDistanceSq(data, offset, clusters) <= candidateSq;
+  };
+  const push = (index) => {
+    if (visited[index] || !qualifies(index)) return;
+    visited[index] = 1;
+    queue[tail++] = index;
   };
 
   for (let x = 0; x < width; x += 1) {
-    trySeed(x);
-    if (height > 1) trySeed((height - 1) * width + x);
+    push(x);
+    if (height > 1) push((height - 1) * width + x);
   }
   for (let y = 0; y < height; y += 1) {
-    trySeed(y * width);
-    if (width > 1) trySeed(y * width + width - 1);
+    push(y * width);
+    if (width > 1) push(y * width + width - 1);
   }
 
   while (head < tail) {
     const index = queue[head++];
     const x = index % width;
-    const y = Math.floor(index / width);
-    const neighbors = [];
-    if (x > 0) neighbors.push(index - 1);
-    if (x + 1 < width) neighbors.push(index + 1);
-    if (y > 0) neighbors.push(index - width);
-    if (y + 1 < height) neighbors.push(index + width);
-    for (const next of neighbors) {
-      if (visited[next]) continue;
-      const offset = next * 4;
-      if (data[offset + 3] < 16 || minClusterDistanceSq(data, offset, clusters) <= candidateSq) {
-        visited[next] = 1;
-        queue[tail++] = next;
-      }
-    }
+    const y = (index / width) | 0;
+    if (x > 0) push(index - 1);
+    if (x + 1 < width) push(index + 1);
+    if (y > 0) push(index - width);
+    if (y + 1 < height) push(index + width);
   }
 
   const mask = new ImageData(width, height);
@@ -409,8 +400,9 @@ function makeForegroundMask(imageData) {
       continue;
     }
     const distance = Math.sqrt(minClusterDistanceSq(data, offset, clusters));
-    let alpha = 0;
-    if (distance > threshold) alpha = Math.round(clamp((distance - threshold) / soft, 0, 1) * 255);
+    const alpha = distance <= threshold
+      ? 0
+      : Math.round(clamp((distance - threshold) / soft, 0, 1) * 255);
     maskData[offset + 3] = Math.min(data[offset + 3], alpha);
   }
   return mask;
@@ -485,24 +477,17 @@ function renderPreview() {
   const sourceContext = source.getContext("2d", { alpha: true });
   if (!sourceContext) throw new Error("Chromium could not render the preview.");
   sourceContext.drawImage(target.bitmap, 0, 0, size.width, size.height);
-  const previewBitmapCanvas = document.createElement("canvas");
-  previewBitmapCanvas.width = size.width;
-  previewBitmapCanvas.height = size.height;
-  const previewContext = previewBitmapCanvas.getContext("2d", { alpha: true });
-  if (!previewContext) throw new Error("Chromium could not render the preview.");
-  previewContext.drawImage(source, 0, 0);
 
   const mask = maskForBitmap(source, PREVIEW_MAX);
-  previewContext.globalCompositeOperation = "destination-in";
-  previewContext.drawImage(mask, 0, 0, size.width, size.height);
-  previewContext.globalCompositeOperation = "source-over";
-
   preview.width = size.width;
   preview.height = size.height;
   const destination = preview.getContext("2d", { alpha: true });
   if (!destination) throw new Error("Chromium could not display the preview.");
   destination.clearRect(0, 0, size.width, size.height);
-  destination.drawImage(previewBitmapCanvas, 0, 0);
+  destination.drawImage(source, 0, 0);
+  destination.globalCompositeOperation = "destination-in";
+  destination.drawImage(mask, 0, 0, size.width, size.height);
+  destination.globalCompositeOperation = "source-over";
 }
 
 function canvasBlob(canvas) {
