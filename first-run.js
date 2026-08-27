@@ -1,3 +1,4 @@
+import "./image-background-remove.js";
 import { readStored } from "./storage.js";
 import {
   externalMetadataStatus,
