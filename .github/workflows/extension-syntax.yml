@@ -17,5 +17,6 @@ jobs:
           node --check service-worker.js
           node --check service-worker-bootstrap.js
           node --check first-run.js
+          node --check image-background-remove.js
       - name: Validate manifest JSON
         run: python -m json.tool manifest.json >/dev/null
