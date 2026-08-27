@@ -102,6 +102,35 @@ function gallerySourceKey(token) {
   return `${GALLERY_SOURCE_PREFIX}${String(token || "")}`;
 }
 
+async function armActivePage(record, token) {
+  try {
+    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const tab = tabs.find((candidate) => Number.isInteger(candidate?.id));
+    if (!tab?.id) return false;
+    await chrome.tabs.sendMessage(tab.id, {
+      type: "filechute-drag-out-start-v1",
+      payload: {
+        protocol: "filechute-item",
+        version: 1,
+        transferToken: token,
+        relativePath: record.relativePath,
+        representation: record.representation,
+        kind: record.kind,
+        name: record.name,
+        originalName: record.name,
+        mime: record.mime || "",
+        size: record.size ?? null,
+        lastModified: record.lastModified ?? null
+      }
+    });
+    return true;
+  } catch {
+    // Restricted browser pages cannot host content scripts. Native File dragging
+    // can still succeed there if Chromium carries the File on its own.
+    return false;
+  }
+}
+
 async function registerTransfer(message) {
   const token = String(message?.token || "");
   const relativePath = String(message?.relativePath || "");
@@ -111,15 +140,15 @@ async function registerTransfer(message) {
     relativePath,
     representation: message?.representation === "thumbnail" ? "thumbnail" : "original",
     kind: message?.kind === "directory" ? "directory" : "file",
-    name: String(message?.name || "")
+    name: String(message?.name || ""),
+    mime: String(message?.mime || ""),
+    size: Number.isFinite(Number(message?.size)) ? Number(message.size) : null,
+    lastModified: Number.isFinite(Number(message?.lastModified)) ? Number(message.lastModified) : null
   };
 
   await chrome.storage.session.set({ [transferKey(token)]: record });
+  void armActivePage(record, token);
 
-  // Directory drags can become saved FrameChute galleries, so remember their
-  // source mapping beyond the current browser session. The actual filesystem
-  // permission remains entirely controlled by Chromium and the saved root
-  // directory handle.
   if (record.kind === "directory") {
     await chrome.storage.local.set({ [gallerySourceKey(token)]: record });
   }
@@ -146,7 +175,7 @@ async function gallerySourceRecord(token, directoryPath) {
     record = session?.[transferKey(token)] || null;
   }
 
-  if (!record) throw new Error("This FileChute gallery source is not registered. Drag the folder into FrameChute again.");
+  if (!record) throw new Error("This FileChute gallery source is not registered. Drag the folder again.");
   if (String(record.relativePath) !== String(directoryPath)) throw new Error("This gallery source does not match that FileChute folder.");
   if (record.kind && record.kind !== "directory") throw new Error("This FileChute source is not a directory.");
   return record;
@@ -220,11 +249,7 @@ async function collectGalleryImages(directory, fullPath, displayPrefix, results)
     }
 
     if (child.handle.kind === "file" && isSupportedImagePath(child.name)) {
-      results.push({
-        name: child.name,
-        relativePath,
-        displayPath
-      });
+      results.push({ name: child.name, relativePath, displayPath });
     }
   }
 }
@@ -268,9 +293,7 @@ async function readGalleryImage(message) {
   if (!isSupportedImagePath(entryPath)) throw new Error("That gallery entry is not a supported image.");
 
   const file = await fileForRelativePath(entryPath);
-  if (file.size > MAX_INLINE_TRANSFER_BYTES) {
-    throw new Error("This individual image is too large for the current gallery bridge.");
-  }
+  if (file.size > MAX_INLINE_TRANSFER_BYTES) throw new Error("This individual image is too large for the current gallery bridge.");
 
   return {
     ok: true,
@@ -288,12 +311,12 @@ async function readDraggedFile(message) {
   const transfer = await consumeTransfer(token, relativePath);
 
   if (transfer.representation !== "original") {
-    throw new Error("This receiver currently requests the original file. Change thumbnail dragging to Original and try again.");
+    throw new Error("Thumbnail drag recovery is unavailable. Drag the filename or grip to send the original file.");
   }
 
   const file = await fileForRelativePath(relativePath);
   if (file.size > MAX_INLINE_TRANSFER_BYTES) {
-    throw new Error("This file is too large for the current direct handoff. Large-file streaming is still being added.");
+    throw new Error("This file is too large for the browser-only recovery bridge. Native drag may still work; large-file companion delivery is the next fallback.");
   }
 
   return {
@@ -343,9 +366,6 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
   return true;
 });
 
-// In the default panel mode Chrome owns the action click and toggles the
-// persistent browser side panel. This listener only does work when the user
-// explicitly selects the legacy floating-window mode in FileChute settings.
 chrome.action.onClicked.addListener((tab) => {
   void (async () => {
     if ((await fileChuteLaunchMode()) !== "window") return;
@@ -360,13 +380,6 @@ chrome.windows.onRemoved.addListener((windowId) => {
   })();
 });
 
-chrome.runtime.onInstalled.addListener(() => {
-  void configureLaunchBehavior();
-});
-chrome.runtime.onStartup.addListener(() => {
-  void configureLaunchBehavior();
-});
-
-// Service workers are ephemeral, so also restore the chosen action behavior
-// whenever this worker is started for any reason.
+chrome.runtime.onInstalled.addListener(() => { void configureLaunchBehavior(); });
+chrome.runtime.onStartup.addListener(() => { void configureLaunchBehavior(); });
 void configureLaunchBehavior();
