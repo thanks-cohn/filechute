@@ -1,4 +1,5 @@
 export const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
+export const FILECHUTE_DRAG_PREFIX = "FILECHUTE1|";
 export const FILECHUTE_VERSION = 1;
 
 export function makeFileChutePayload({
@@ -42,12 +43,23 @@ function validWebUrl(value) {
   }
 }
 
+function compactTicket(payload) {
+  if (!payload?.transferToken || !payload?.relativePath) return "";
+  const fields = [
+    payload.sourceExtensionId || globalThis.chrome?.runtime?.id || "",
+    payload.transferToken,
+    payload.kind || "file",
+    payload.relativePath || "",
+    payload.originalName || payload.name || ""
+  ];
+  return FILECHUTE_DRAG_PREFIX + fields.map((value) => encodeURIComponent(String(value))).join("|");
+}
+
 export function writeFileChuteDrag(transfer, payload, file = null) {
   transfer.effectAllowed = "copy";
 
-  // Put the real File item into DataTransfer before adding FileChute's private
-  // metadata flavor. Some browser upload surfaces inspect the earliest/native
-  // item and are markedly more reliable when Files is the primary flavor.
+  // Keep the ordinary browser File flavor first. This is the zero-overhead path
+  // on platforms/sites where Chromium carries the File correctly.
   let fileAdded = false;
   if (file) {
     try {
@@ -57,7 +69,9 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
     } catch {}
   }
 
-  transfer.setData(FILECHUTE_DRAG_TYPE, JSON.stringify(payload));
+  // Always register FileChute's private metadata. The receiving bridge uses it
+  // when Chromium preserves custom MIME across the renderer boundary.
+  try { transfer.setData(FILECHUTE_DRAG_TYPE, JSON.stringify(payload)); } catch {}
 
   if (payload?.transferToken && payload?.relativePath && globalThis.chrome?.runtime?.sendMessage) {
     globalThis.chrome.runtime.sendMessage({
@@ -66,21 +80,26 @@ export function writeFileChuteDrag(transfer, payload, file = null) {
       relativePath: payload.relativePath,
       representation: payload.representation || "original",
       kind: payload.kind || "file",
-      name: payload.originalName || payload.name || ""
+      name: payload.originalName || payload.name || "",
+      mime: payload.mime || "",
+      size: payload.size ?? null,
+      lastModified: payload.lastModified ?? null
     }).catch(() => {});
   }
 
-  // When FileChute has the actual bytes, expose the drag as a file first and
-  // do not advertise stale provenance URLs as ordinary text. Google and Yandex
-  // can otherwise choose the text/uri-list flavor instead of uploading the
-  // image. Keep source URLs only as a fallback when Chromium refused the File.
-  if (!fileAdded) {
+  // Chromium on Windows can report a script-added File locally yet strip the
+  // usable File by the time the drag reaches the page renderer. Mirror a tiny
+  // recovery ticket into text/plain so FileChute's one canonical receiver can
+  // recover the exact file. This is deliberately compact: never place file
+  // bytes, paths from outside the selected root, or giant JSON envelopes here.
+  const ticket = compactTicket(payload);
+  if (ticket) {
+    try { transfer.setData("text/plain", ticket); } catch {}
+  } else if (!fileAdded) {
     const sourceUrl = validWebUrl(payload?.sourceUrl);
     if (sourceUrl) {
       try { transfer.setData("text/uri-list", sourceUrl); } catch {}
       try { transfer.setData("text/plain", sourceUrl); } catch {}
-    } else if (!file && payload?.relativePath) {
-      try { transfer.setData("text/plain", payload.relativePath); } catch {}
     }
   }
 }
