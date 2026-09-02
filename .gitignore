@@ -1,0 +1,2 @@
+# Chrome Web Store packages are reproducible build outputs.
+/dist/*.zip

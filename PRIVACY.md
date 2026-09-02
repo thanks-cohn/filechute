@@ -1,47 +1,35 @@
-# FileChute Privacy Policy
+# Chute Privacy Policy
 
 Last updated: August 25, 2026
 
-FileChute is designed to be local-first. Its purpose is to let a user browse a folder they explicitly select, keep that folder available beside the browser, and move files between that local folder and browser destinations the user chooses.
+Chute is a local-first utility. It provides access to one dedicated `Chute/` directory that the user explicitly authorizes through Chrome's folder picker.
 
 ## Data collection
 
-FileChute does not operate an account system, advertising network, analytics service, telemetry service, or cloud storage service. FileChute does not sell personal data and does not use personal data for advertising, profiling, credit decisions, or unrelated purposes.
+Chute has no accounts, analytics, advertising, telemetry, or cloud storage backend. It does not sell personal data or use it for profiling.
 
 ## Local files
 
-FileChute can access only local folders and files that the user explicitly grants through Chromium's file and permission interfaces. File contents are read locally in the browser when needed to display a file, create a local thumbnail, resize an image, save an item, or complete a drag-and-drop operation requested by the user.
+Chrome controls the directory grant. Chute creates or reuses a `Chute` child inside the chosen parent and stores only that child handle as its hard root. File contents are read locally for listing, previews, search results, and user-requested drag-and-drop operations. Chute neither scans nor navigates outside that root.
 
-FileChute does not upload a user's local folder contents to a FileChute server. FileChute has no FileChute cloud backend for storing those files.
+When a user drags a file from Chute into a website, the real selected file is provided to that destination at the user's request. The destination's privacy policy governs its subsequent handling.
 
-When the user intentionally drags or sends a file from FileChute into a website, the selected file is provided to that destination as part of the user's requested action. Any handling by that destination is governed by that destination's own privacy policy and terms.
+## Supported browser images
 
-## Browser-source images
+On the explicitly supported Google, Yandex, and ChatGPT origins, Chute records short-lived image source candidates when the user starts a drag. Dropping the image onto Chutty asks the page to resolve readable image bytes and sends them to the extension for a local write. Chute does not continuously scrape pages or send captured images to a Chute server.
 
-When the user intentionally drags an image from a supported browser page into FileChute, FileChute may read the selected image resource so it can save that image into the local folder chosen by the user. This transfer is initiated by the user. FileChute does not continuously scrape pages or upload captured images to a FileChute server.
+## Browser storage
 
-## Metadata and thumbnails
-
-FileChute may store settings, remembered folder handles, transfer state, locally generated thumbnails, and provenance metadata in browser-managed extension storage. If the user enables an optional local mirror, FileChute can instead or additionally write supported metadata or thumbnails into a local folder selected by the user.
-
-Provenance metadata can include information such as a source URL or page URL when that information is available and useful for the user's saved item. This information is kept in the user's browser or user-selected local storage unless the user explicitly moves the corresponding data elsewhere.
+The granted directory handle is stored in extension-owned IndexedDB. Chrome extension storage holds lightweight supported-page source candidates and Chutty's successful-ingest count. Files themselves remain in `Chute/`; IndexedDB is not a duplicate file shelf. Removing extension storage or uninstalling Chute removes browser-managed state but does not delete local files.
 
 ## Permissions
 
-FileChute requests browser permissions only to provide its file shelf, persistence, user-triggered browser integration, and side-panel behavior. Site-specific integration is used to make explicit drag-and-drop transfers work more reliably on supported pages such as Google, Yandex, and ChatGPT.
-
-## Retention and deletion
-
-Browser-managed FileChute data can be removed by clearing the extension's storage or uninstalling the extension. Files written to a user-selected local folder remain under the user's control and are not deleted merely because FileChute is uninstalled.
+The extension requests `storage` for lightweight state and `sidePanel` for the persistent shelf. Content scripts are restricted to the ChatGPT, Google, and Yandex HTTPS matches listed in the manifest. Chute requests no broad host permission or native messaging capability.
 
 ## Security
 
-FileChute uses Manifest V3 and browser-provided APIs. It does not intentionally execute remotely hosted code as part of its extension package.
+Chute uses Manifest V3, browser-provided APIs, and package-local code. It does not use a loopback service, desktop helper, daemon, or remotely hosted executable code.
 
-## Changes
+## Changes and contact
 
-If FileChute's data practices materially change, this policy should be updated before or together with the release that introduces the change.
-
-## Contact
-
-For questions about FileChute's privacy behavior, use the project's GitHub repository issue tracker or the developer contact information associated with the Chrome Web Store listing.
+This policy will be updated with any material change to Chute's data practices. Questions may be raised through the project's issue tracker or the developer contact listed in the Chrome Web Store.

@@ -1,0 +1,9 @@
+{
+  "name": "chute-chrome-extension",
+  "private": true,
+  "version": "3.0.0",
+  "scripts": {
+    "test": "node scripts/validate.mjs",
+    "package": "node scripts/package.mjs"
+  }
+}
