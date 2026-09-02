@@ -9,6 +9,52 @@ const TRANSFER_PREFIX = "filechute-transfer-v1:";
 const GALLERY_SOURCE_PREFIX = "filechute-gallery-source-v1:";
 const MAX_INLINE_TRANSFER_BYTES = 48 * 1024 * 1024;
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "ico", "apng"]);
+const DIAGNOSTICS_KEY = "filechute-drag-diagnostics-v1";
+const DIAGNOSTIC_SIGNATURES_KEY = "filechute-drag-failure-signatures-v1";
+const DIAGNOSTIC_LIMIT = 500;
+let diagnosticWrite = Promise.resolve();
+
+async function storeDiagnosticNow(line) {
+  if (typeof line !== "string") return false;
+  const safeLine = line.replace(/[\r\n]+/g, " ").slice(0, 4096);
+  const stored = await chrome.storage.session.get(DIAGNOSTICS_KEY).catch(() => ({}));
+  const lines = Array.isArray(stored?.[DIAGNOSTICS_KEY])
+    ? stored[DIAGNOSTICS_KEY].filter((item) => typeof item === "string")
+    : [];
+  lines.push(safeLine);
+  const update = { [DIAGNOSTICS_KEY]: lines.slice(-DIAGNOSTIC_LIMIT) };
+  try {
+    const record = JSON.parse(safeLine);
+    if (record?.state === "failed" && typeof record.signature === "string") {
+      const signatureStore = await chrome.storage.session.get(DIAGNOSTIC_SIGNATURES_KEY).catch(() => ({}));
+      const signatures = Array.isArray(signatureStore?.[DIAGNOSTIC_SIGNATURES_KEY])
+        ? signatureStore[DIAGNOSTIC_SIGNATURES_KEY].filter((item) => typeof item === "string")
+        : [];
+      if (!signatures.includes(record.signature)) signatures.push(record.signature);
+      update[DIAGNOSTIC_SIGNATURES_KEY] = signatures;
+    }
+  } catch {}
+  await chrome.storage.session.set(update);
+  console.info(`[FileChute drag diagnostic] ${safeLine}`);
+  return true;
+}
+
+function storeDiagnostic(line) {
+  const write = diagnosticWrite.then(() => storeDiagnosticNow(line));
+  diagnosticWrite = write.catch(() => {});
+  return write;
+}
+
+function workerDiagnostic(boundary, token, state, detail = "", error = null) {
+  const clean = (value) => String(value ?? "").replace(/[\r\n\t]+/g, " ").slice(0, 1000);
+  const record = {
+    at: new Date().toISOString(), token: clean(token) || "unavailable",
+    boundary: clean(boundary), state: clean(state), detail: clean(detail),
+    error: error ? `${clean(error.name || "Error")}:${clean(error.message || error)}` : ""
+  };
+  record.signature = [record.boundary, record.state, record.error].filter(Boolean).join("|");
+  void storeDiagnostic(JSON.stringify(record)).catch(() => {});
+}
 
 async function fileChuteLaunchMode() {
   return (await readStored(LAUNCH_MODE_KEY)) === "window" ? "window" : "panel";
@@ -105,7 +151,12 @@ function gallerySourceKey(token) {
 async function registerTransfer(message) {
   const token = String(message?.token || "");
   const relativePath = String(message?.relativePath || "");
-  if (!token || !relativePath) return false;
+  if (!token || !relativePath) {
+    workerDiagnostic("worker.registration.validate", token, "failed", "missing-token-or-path");
+    return false;
+  }
+
+  workerDiagnostic("worker.registration.begin", token, "healthy", `kind=${message?.kind || "file"}`);
 
   const record = {
     relativePath,
@@ -115,6 +166,7 @@ async function registerTransfer(message) {
   };
 
   await chrome.storage.session.set({ [transferKey(token)]: record });
+  workerDiagnostic("worker.registration.session-write", token, "healthy");
 
   // Directory drags can become saved FrameChute galleries, so remember their
   // source mapping beyond the current browser session. The actual filesystem
@@ -127,12 +179,20 @@ async function registerTransfer(message) {
 }
 
 async function consumeTransfer(token, relativePath) {
+  workerDiagnostic("worker.transfer.consume.begin", token, "pending");
   const key = transferKey(token);
   const stored = await chrome.storage.session.get(key);
   await chrome.storage.session.remove(key).catch(() => {});
   const record = stored?.[key];
-  if (!record) throw new Error("This FileChute drag is no longer available. Drag the item again.");
-  if (String(record.relativePath) !== String(relativePath)) throw new Error("The FileChute drag does not match this file.");
+  if (!record) {
+    workerDiagnostic("worker.transfer.lookup", token, "failed", "record-missing");
+    throw new Error("This FileChute drag is no longer available. Drag the item again.");
+  }
+  if (String(record.relativePath) !== String(relativePath)) {
+    workerDiagnostic("worker.transfer.path-match", token, "failed", "path-mismatch");
+    throw new Error("The FileChute drag does not match this file.");
+  }
+  workerDiagnostic("worker.transfer.consume.complete", token, "healthy");
   return record;
 }
 
@@ -292,6 +352,7 @@ async function readDraggedFile(message) {
   }
 
   const file = await fileForRelativePath(relativePath);
+  workerDiagnostic("worker.filesystem.read", token, "healthy", `name=${file.name};size=${file.size};type=${file.type || ""}`);
   if (file.size > MAX_INLINE_TRANSFER_BYTES) {
     throw new Error("This file is too large for the current direct handoff. Large-file streaming is still being added.");
   }
@@ -314,6 +375,22 @@ async function handleBridgeMessage(message) {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "filechute-diagnostic-v1") {
+    void storeDiagnostic(message.line)
+      .then((ok) => sendResponse({ ok }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+  if (message?.type === "filechute-diagnostics-read-v1") {
+    void chrome.storage.session.get([DIAGNOSTICS_KEY, DIAGNOSTIC_SIGNATURES_KEY])
+      .then((stored) => sendResponse({
+        ok: true,
+        lines: stored?.[DIAGNOSTICS_KEY] || [],
+        signatures: stored?.[DIAGNOSTIC_SIGNATURES_KEY] || []
+      }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
   if (message?.type === "filechute-launch-mode-changed") {
     void configureLaunchBehavior(message?.launchMode)
       .then((mode) => sendResponse({ ok: true, launchMode: mode }))

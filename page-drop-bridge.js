@@ -4,6 +4,22 @@
   const GENERATION = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   globalThis[MARKER] = GENERATION;
 
+  function diagnostic(boundary, payload, state = "observed", detail = "", error = null) {
+    const clean = (value) => String(value ?? "").replace(/[\r\n\t]+/g, " ").slice(0, 1000);
+    const record = {
+      at: new Date().toISOString(),
+      token: clean(payload?.transferToken) || "unavailable",
+      boundary: clean(boundary),
+      state: clean(state),
+      detail: clean(detail),
+      error: error ? `${clean(error.name || "Error")}:${clean(error.message || error)}` : ""
+    };
+    record.signature = [record.boundary, record.state, record.error].filter(Boolean).join("|");
+    const line = JSON.stringify(record);
+    console.info(`[FileChute drag] ${line}`);
+    try { chrome.runtime.sendMessage({ type: "filechute-diagnostic-v1", line }).catch(() => {}); } catch {}
+  }
+
   function extensionContextAvailable() {
     try {
       return Boolean(globalThis.chrome?.runtime?.id);
@@ -221,6 +237,7 @@
       if (!activeBridge()) throw new Error("FileChute reloaded while this page was open. Try the drop again.");
 
       try {
+        diagnostic("receiver.bytes.request", payload, "pending", `attempt=${attempt + 1}`);
         const response = await chrome.runtime.sendMessage({
           type: "filechute-read-dragged-file-v1",
           transferToken: payload.transferToken,
@@ -229,11 +246,16 @@
           mime: payload.mime || ""
         });
 
-        if (response?.ok) return response;
+        if (response?.ok) {
+          diagnostic("receiver.bytes.response", payload, "healthy", `attempt=${attempt + 1};size=${Number(response.size) || 0}`);
+          return response;
+        }
         const message = response?.error || "FileChute could not read that file.";
+        diagnostic("receiver.bytes.response", payload, "failed", `attempt=${attempt + 1};message=${message}`);
         lastError = new Error(message);
         if (!/drag is no longer available|not registered|no longer available/i.test(message)) throw lastError;
       } catch (error) {
+        diagnostic("receiver.bytes.transport", payload, "failed", `attempt=${attempt + 1}`, error);
         lastError = error;
         if (/extension context invalidated/i.test(String(error?.message || error))) {
           throw new Error("FileChute reloaded while this page was open. Try the drop again.");
@@ -246,28 +268,34 @@
   }
 
   async function receive(payload, event) {
+    diagnostic("receiver.fallback.begin", payload, "healthy", `kind=${payload.kind || "unknown"}`);
     if (payload.kind === "directory") throw new Error("This website upload target accepts files, not a FileChute directory.");
     if (!payload.transferToken || !payload.relativePath) throw new Error("Reload FileChute and drag this item again.");
 
     const response = await readDraggedFile(payload);
     const file = base64File(response);
+    diagnostic("receiver.file.rebuilt", payload, "healthy", `name=${file.name};size=${file.size};type=${file.type}`);
     const inputs = candidateInputs(event.target).filter((candidate) => inputAccepts(candidate, file));
     const input = inputs[0];
 
     if (input && assignFile(input, file)) {
+      diagnostic("receiver.input.assign", payload, "healthy", `candidates=${inputs.length}`);
       clearPageDropState(event.target, event);
       showToast(`Sent ${file.name} to this page.`);
       return;
     }
 
     if (dispatchDrop(event.target, file, event)) {
+      diagnostic("receiver.synthetic-drop", payload, "healthy", `candidates=${inputs.length}`);
       clearPageDropState(event.target, event);
       showToast(`Passed ${file.name} to this drop target.`);
       return;
     }
 
     clearPageDropState(event.target, event);
-    throw new Error("This page does not expose a compatible file upload target.");
+    const error = new Error("This page does not expose a compatible file upload target.");
+    diagnostic("receiver.target.acceptance", payload, "failed", `candidates=${inputs.length}`, error);
+    throw error;
   }
 
   document.addEventListener("dragover", (event) => {
@@ -288,14 +316,22 @@
     const payload = parsePayload(event.dataTransfer);
     if (!payload) return;
 
+    diagnostic("receiver.drop.observed", payload, "healthy", `types=${[...(event.dataTransfer?.types || [])].join(",")};files=${event.dataTransfer?.files?.length || 0}`);
+
     // Only stand down when the target page really received a File object.
     // Merely seeing a "Files" type is insufficient; Chrome can leave behind a
     // phantom Files flavor after several extension-to-page drag sessions.
-    if (hasUsableNativeFile(event.dataTransfer)) return;
+    if (hasUsableNativeFile(event.dataTransfer)) {
+      diagnostic("receiver.native-file.boundary", payload, "healthy", "delegated-to-page");
+      return;
+    }
+
+    diagnostic("receiver.native-file.boundary", payload, "missing", "entering-extension-fallback");
 
     event.preventDefault();
 
     void receive(payload, event).catch((error) => {
+      diagnostic("receiver.handoff.complete", payload, "failed", "", error);
       clearPageDropState(event.target, event);
       console.error("FileChute website handoff failed", error);
       showToast(error?.message || "Could not send that FileChute file to this page.", true);
