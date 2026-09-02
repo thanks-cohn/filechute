@@ -1,4 +1,4 @@
-import { makeFileChutePayload, writeFileChuteDrag, FILECHUTE_DRAG_TYPE } from "./interop.js";
+import { makeChutePayload, writeChuteDrag, FILECHUTE_DRAG_TYPE } from "./interop.js";
 
 const entries = document.querySelector("#entries");
 
@@ -14,7 +14,7 @@ function rowPath(row) {
   return String(row?.querySelector(".entry-path")?.textContent || "").trim();
 }
 
-function hasFileChutePayload(transfer) {
+function hasChutePayload(transfer) {
   try {
     return Boolean(transfer?.getData(FILECHUTE_DRAG_TYPE));
   } catch {
@@ -25,7 +25,7 @@ function hasFileChutePayload(transfer) {
 function prepareDirectoryRows(root = document) {
   for (const row of root.querySelectorAll?.(".entry.directory") || []) {
     row.hidden = false;
-    row.dataset.filechuteDirectory = "true";
+    row.dataset.chuteDirectory = "true";
     row.draggable = true;
 
     const grip = row.querySelector(".filechute-grip");
@@ -48,17 +48,17 @@ function ensureDirectoryDrag(event) {
   const row = target?.closest(".entry.directory");
   if (!row) return;
 
-  // sidepanel.js already writes the canonical FileChute payload when the
+  // sidepanel.js already writes the canonical Chute payload when the
   // filename/preview starts the drag. This is a fallback for dragging the
   // folder row itself or for future UI changes: never replace a payload that
   // is already present.
-  if (hasFileChutePayload(event.dataTransfer)) return;
+  if (hasChutePayload(event.dataTransfer)) return;
 
   const name = rowName(row);
   const relativePath = rowPath(row);
   if (!relativePath) return;
 
-  const payload = makeFileChutePayload({
+  const payload = makeChutePayload({
     kind: "directory",
     name,
     originalName: name,
@@ -69,7 +69,7 @@ function ensureDirectoryDrag(event) {
     lastModified: null
   });
 
-  writeFileChuteDrag(event.dataTransfer, payload, null);
+  writeChuteDrag(event.dataTransfer, payload, null);
   row.classList.add("dragging");
 }
 

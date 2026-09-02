@@ -107,7 +107,7 @@ async function syncSaveButtons() {
 function injectStyles() {
   if (document.querySelector("style[data-filechute-resize-v3]")) return;
   const style = document.createElement("style");
-  style.dataset.filechuteResizeV3 = "true";
+  style.dataset.chuteResizeV3 = "true";
   style.textContent = `
     .filechute-resize-actions{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:6px}
     .filechute-resize-actions button{padding:4px 7px;border-radius:7px;font-size:10px;line-height:1.15}
@@ -429,14 +429,14 @@ function rowPath(row) {
 }
 
 async function resolveRow(row, { request = false } = {}) {
-  if (!(row instanceof HTMLElement)) throw new Error("FileChute lost track of this image. Refresh the panel and try again.");
+  if (!(row instanceof HTMLElement)) throw new Error("Chute lost track of this image. Refresh the panel and try again.");
   const root = await getRoot({ request });
-  if (!root) throw new Error("FileChute needs write access to the remembered folder before it can resize this image.");
+  if (!root) throw new Error("Chute needs write access to the remembered folder before it can resize this image.");
 
   const rawPath = rowPath(row);
   let parts = rawPath.split("/").map((part) => part.trim()).filter(Boolean);
   if (parts[0]?.toLowerCase() === String(root.name || "").toLowerCase()) parts = parts.slice(1);
-  if (!parts.length) throw new Error("FileChute could not resolve this image path.");
+  if (!parts.length) throw new Error("Chute could not resolve this image path.");
 
   const fileName = parts.pop();
   let directory = root;
@@ -470,7 +470,7 @@ async function openResize(row) {
     ui.width?.focus();
     ui.width?.select();
   } catch (error) {
-    console.error("FileChute resize could not open", error);
+    console.error("Chute resize could not open", error);
     setStatus(error?.message || "Could not open image resize.", true);
   }
 }
@@ -554,12 +554,12 @@ async function createCopy() {
       setStatus(`Created resized/${name}`);
       dialog?.close("ok");
       resizeTarget = null;
-      window.dispatchEvent(new CustomEvent("filechute:filesystem-changed"));
+      window.dispatchEvent(new CustomEvent("chute:filesystem-changed"));
     } finally {
       bitmap.close();
     }
   } catch (error) {
-    console.error("FileChute image resize failed", error);
+    console.error("Chute image resize failed", error);
     setStatus(error?.message || "Could not resize this image.", true);
   } finally {
     if (create) {
@@ -679,5 +679,5 @@ async function initialize() {
 }
 
 void initialize().catch((error) => {
-  console.error("Could not initialize FileChute image resize", error);
+  console.error("Could not initialize Chute image resize", error);
 });

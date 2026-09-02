@@ -5,7 +5,7 @@ const RECENT_KEY = "filechute-recent-drops-v1";
 const DRAG_WATCHDOG_MS = 6500;
 
 const style = document.createElement("style");
-style.dataset.filechuteShelfRefresh = "true";
+style.dataset.chuteShelfRefresh = "true";
 style.textContent = `
   .controls.filechute-has-refresh {
     grid-template-columns: auto auto auto minmax(0, 1fr);
@@ -36,7 +36,7 @@ function requestRefresh({ animate = false } = {}) {
       setTimeout(() => button.classList.remove("filechute-refreshing"), 460);
     }
   }
-  window.dispatchEvent(new CustomEvent("filechute:filesystem-changed"));
+  window.dispatchEvent(new CustomEvent("chute:filesystem-changed"));
 }
 
 function recentNames() {
@@ -69,7 +69,7 @@ function observeBrowserSaves() {
     // The browser-source handlers know the final filename only after the bytes
     // have been written. Remember that actual saved name before their quick
     // path-preserving reload so it rises to the top and gets the existing
-    // FileChute "new" treatment immediately.
+    // Chute "new" treatment immediately.
     rememberRecent(match[1]);
     requestRefresh();
   };
@@ -88,7 +88,7 @@ function installRefreshButton() {
   button.id = "filechute-refresh";
   button.type = "button";
   button.textContent = "↻";
-  button.title = "Refresh this FileChute shelf";
+  button.title = "Refresh this Chute shelf";
   button.setAttribute("aria-label", button.title);
   button.addEventListener("click", () => requestRefresh({ animate: true }));
   controls.classList.add("filechute-has-refresh");
@@ -145,14 +145,14 @@ function refreshNativeDragFiles(transfer) {
 
   // sidepanel.js has already populated DataTransfer by the time this bubbling
   // listener runs. Replace only the file items with fresh File wrappers while
-  // leaving FileChute's custom protocol/string flavors intact.
+  // leaving Chute's custom protocol/string flavors intact.
   try {
     for (let index = transfer.items.length - 1; index >= 0; index -= 1) {
       if (transfer.items[index]?.kind === "file") transfer.items.remove(index);
     }
     for (const file of files) transfer.items.add(freshFile(file));
   } catch (error) {
-    console.debug("FileChute kept Chromium's original drag File object", error);
+    console.debug("Chute kept Chromium's original drag File object", error);
   }
 }
 

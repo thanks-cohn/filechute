@@ -3,8 +3,8 @@ import "./chatgpt-image-drop-fallback.js";
 import "./google-image-drop-fallback.js";
 
 const FILECHUTE_DRAG_TYPE = "application/x-filechute-item+json";
-const CHUTE_DRAG_TYPE = "application/x-chute-item";
-const FRAMECHUTE_DRAG_TYPE = "application/x-framechute-item+json";
+const CHUTE_DRAG_TYPE = "application/x-filechute-item";
+const FRAMECHUTE_DRAG_TYPE = "application/x-framefilechute-item+json";
 const PRIMED_TYPE = "application/x-filechute-browser-drop-primed";
 const BROWSER_STRING_TYPES = ["text/html", "text/uri-list", "text/plain", "DownloadURL"];
 
